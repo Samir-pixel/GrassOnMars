@@ -19,11 +19,10 @@ frontend/dist/
 frontend/.vite/
 *.tsbuildinfo
 
-# Scientific data binaries (keep directory structure only)
-data/raw/*
-!data/raw/.gitkeep
-data/processed/*
-!data/processed/.gitkeep
+# NASA WMTS tile cache. The API refetches these; they are not needed to boot.
+data/raw/trek/
+
+# Empty local buckets. Rasters and tables under data/raw and data/processed are tracked.
 data/samples/*
 !data/samples/.gitkeep
 data/metadata/*
