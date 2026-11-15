@@ -1,0 +1,12 @@
+.git
+.local
+frontend
+design
+docs
+marswalk-vehicles
+**/node_modules
+**/.venv
+**/__pycache__
+**/.pytest_cache
+data/raw/trek
+data/tmp
