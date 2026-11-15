@@ -20,13 +20,13 @@ function Step($name, [scriptblock]$cmd) {
   if ($LASTEXITCODE -ne 0) { throw "$name failed (exit $LASTEXITCODE)" }
 }
 
-& "$pgBin\pg_isready.exe" -h 127.0.0.1 -p 5433 | Out-Null
+& "$pgBin\pg_isready.exe" -h 127.0.0.1 -p 4782 | Out-Null
 if ($LASTEXITCODE -ne 0) {
-  Step "pg_ctl start" { & "$pgBin\pg_ctl.exe" -D $pgData -l "$root\.local\postgres-pg18.log" -o "-h 127.0.0.1 -p 5433" -w start }
+  Step "pg_ctl start" { & "$pgBin\pg_ctl.exe" -D $pgData -l "$root\.local\postgres-pg18.log" -o "-h 127.0.0.1 -p 4782" -w start }
 }
 
 Step "CREATE EXTENSION postgis" {
-  & "$pgBin\psql.exe" -h 127.0.0.1 -p 5433 -U marswalk -d marswalk -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS postgis; SELECT PostGIS_Version();"
+  & "$pgBin\psql.exe" -h 127.0.0.1 -p 4782 -U marswalk -d marswalk -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS postgis; SELECT PostGIS_Version();"
 }
 
 Set-Location "$root\backend"

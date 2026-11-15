@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-marswalk_dev_password}
       POSTGRES_DB: ${POSTGRES_DB:-marswalk}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-4782}:5432"
     volumes:
       - marswalk_pgdata:/var/lib/postgresql/data
       - ./scripts/init-postgis.sql:/docker-entrypoint-initdb.d/01-init-postgis.sql:ro
@@ -30,9 +30,9 @@ services:
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
       DATA_DIR: /app/data
-      CORS_ORIGINS: http://localhost:${FRONTEND_PORT:-5173},http://127.0.0.1:${FRONTEND_PORT:-5173}
+      CORS_ORIGINS: http://localhost:${FRONTEND_PORT:-4780},http://127.0.0.1:${FRONTEND_PORT:-4780},https://grassonmars.myspaceproject.app
     ports:
-      - "${BACKEND_PORT:-8000}:8000"
+      - "${BACKEND_PORT:-4781}:8000"
     volumes:
       - ./backend:/app
       - ./data:/app/data
@@ -53,9 +53,11 @@ services:
     restart: unless-stopped
     environment:
       VITE_HOST: 0.0.0.0
+      # Inside the container Vite still listens on 5173; the host publishes FRONTEND_PORT (default 4780).
+      FRONTEND_PORT: "5173"
       API_PROXY_TARGET: http://backend:8000
     ports:
-      - "${FRONTEND_PORT:-5173}:5173"
+      - "${FRONTEND_PORT:-4780}:5173"
     volumes:
       - ./frontend:/app
       - /app/node_modules

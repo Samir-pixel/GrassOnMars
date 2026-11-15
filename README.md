@@ -33,10 +33,10 @@ GrassOnMars/
    docker compose up --build
    ```
 3. Проверьте доступность сервисов:
-   - **Frontend (панель MARSWALK):** http://localhost:5173
-   - **Backend Healthcheck:** http://localhost:8000/api/v1/health
-   - **Swagger / OpenAPI (`/docs`):** http://localhost:8000/docs
-   - **PostgreSQL + PostGIS:** `localhost:5432` (БД `marswalk`)
+   - **Frontend (панель MARSWALK):** http://localhost:4780
+   - **Backend Healthcheck:** http://localhost:4781/api/v1/health
+   - **Swagger / OpenAPI (`/docs`):** http://localhost:4781/docs
+   - **PostgreSQL + PostGIS:** `localhost:4782` (БД `marswalk`)
 
 Остановка контейнеров:
 ```powershell
@@ -49,13 +49,13 @@ docker compose down
 
 ### Локальный запуск одной командой на каждый сервис (скрипты Windows PowerShell)
 
-В проекте уже настроены локальный кластер PostgreSQL (`.local/pgdata` на порту `5433`), виртуальное окружение Python (`backend/.venv`) и портативный Node.js 22 (`.local/node`):
+В проекте уже настроены локальный кластер PostgreSQL (`.local/pgdata` на порту `4782`), виртуальное окружение Python (`backend/.venv`) и портативный Node.js 22 (`.local/node`):
 
 ```powershell
-# Терминал 1 — PostgreSQL + Backend FastAPI (http://localhost:8000, Swagger: http://localhost:8000/docs)
+# Терминал 1 — PostgreSQL + Backend FastAPI (http://localhost:4781, Swagger: http://localhost:4781/docs)
 .\scripts\dev-backend.ps1
 
-# Терминал 2 — Frontend Vite (http://127.0.0.1:5173)
+# Терминал 2 — Frontend Vite (http://127.0.0.1:4780)
 .\scripts\dev-frontend.ps1
 ```
 
@@ -67,7 +67,7 @@ Frontend — это страница дизайнера `frontend/index.html` (�
 ```powershell
 cd backend
 $env:PATH = "C:\Program Files\PostgreSQL\18\bin;$env:PATH"
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 4781
 ```
 
 Запуск тестов Backend и проверка миграций Alembic:

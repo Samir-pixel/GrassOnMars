@@ -15,11 +15,11 @@ if (Test-Path "$root\.local\pg18\lib") { $pathPrefix = "$pgBin;$root\.local\pg18
 
 if (Test-Path "$pgBin\pg_ctl.exe") {
   $env:PATH = "$pathPrefix;$env:PATH"
-  & "$pgBin\pg_isready.exe" -h 127.0.0.1 -p 5433 | Out-Null
+  & "$pgBin\pg_isready.exe" -h 127.0.0.1 -p 4782 | Out-Null
   if ($LASTEXITCODE -ne 0 -and (Test-Path "$pgData\PG_VERSION")) {
-    & "$pgBin\pg_ctl.exe" -D $pgData -l "$root\.local\postgres-pg18.log" -o "-h 127.0.0.1 -p 5433" start
+    & "$pgBin\pg_ctl.exe" -D $pgData -l "$root\.local\postgres-pg18.log" -o "-h 127.0.0.1 -p 4782" start
   }
 }
 
 Set-Location "$root\backend"
-& "$root\backend\.venv\Scripts\python.exe" -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+& "$root\backend\.venv\Scripts\python.exe" -m uvicorn app.main:app --host 127.0.0.1 --port 4781 --reload

@@ -23,10 +23,10 @@ class Settings(BaseSettings):
     postgres_password: SecretStr = SecretStr("marswalk_dev_password")
     postgres_db: str = "marswalk"
     postgres_host: str = "localhost"
-    postgres_port: int = 5432
+    postgres_port: int = 4782
     database_url: str | None = None
 
-    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    cors_origins: str = "http://localhost:4780,http://127.0.0.1:4780,https://grassonmars.myspaceproject.app"
     data_dir: Path = Path(__file__).resolve().parents[3] / "data"
     gemini_api_key: SecretStr | None = None
 
