@@ -9,6 +9,7 @@ const proxy = {
 const host = process.env.VITE_HOST ?? "127.0.0.1";
 
 export default defineConfig({
-  server: { host, port: 5173, proxy },
-  preview: { host, port: 4173, proxy },
+  // Public tunnel/proxy host for the deployed preview (Vite blocks unknown Host headers by default).
+  server: { host, port: 5173, proxy, allowedHosts: ["grassonmars.myspaceproject.app"] },
+  preview: { host, port: 4173, proxy, allowedHosts: ["grassonmars.myspaceproject.app"] },
 });
