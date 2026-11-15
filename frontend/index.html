@@ -225,6 +225,17 @@
           <div class="target-list" id="target-list" role="radiogroup" aria-label="Destinations"></div>
         </div>
 
+        <div class="card" id="vehicle-card">
+          <div class="card-head"><h3>Choose how the crew moves</h3><span class="muted">Vehicle changes path, time and GO / NO GO</span></div>
+          <div class="veh-hero">
+            <img id="veh-hero-img" src="/vehicles/scenes/lineup.jpg" alt="NASA rover concepts on Mars">
+            <span class="veh-badge">3D render · concept</span>
+            <div class="veh-cap"><span class="eyebrow">Selected</span><b id="veh-hero-name">On foot</b><span id="veh-hero-why">Current Marswalk mode: walk in suits from the habitat.</span></div>
+          </div>
+          <div class="veh-grid" id="veh-grid" role="group" aria-label="Crew mobility"></div>
+          <p class="fine">Vehicle route parameters are team assumptions for the demo, not official NASA specifications.</p>
+        </div>
+
         <div class="card">
           <div class="card-head"><h3>Route options</h3><span class="muted" id="route-grid-note">A* on the terrain grid, server-side</span></div>
           <div class="settings">
@@ -659,7 +670,7 @@
       <div class="team card">
         <img data-zyro-face alt="" class="team-face">
         <div><h3>Team Grass on Mars</h3>
-          <p>Three people from Dushanbe, Tajikistan. NASA Space Apps 2026, challenge “Interplanetary Survival Guide: Martian Map”. Our name is the long-term goal: a Mars where even grass can grow.</p></div>
+          <p>Four people from Dushanbe, Tajikistan. NASA Space Apps 2026, challenge “Interplanetary Survival Guide: Martian Map”. Our name is the long-term goal: a Mars where even grass can grow.</p></div>
       </div>
     </div>
   </section>
@@ -810,6 +821,7 @@
 <script src="/js/stars.js"></script>
 <script src="/js/marsclock.js"></script>
 <script src="/js/router.js"></script>
+<script src="/js/vehicle-router.js"></script>
 <script src="/js/globe.js"></script>
 <script src="/js/nav.js"></script>
 <script src="/js/mission.js"></script>

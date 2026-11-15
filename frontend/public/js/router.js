@@ -70,6 +70,11 @@
     return Math.hypot(dc * t.dx, dr * t.dy);
   }
 
+  function passable(t, i, opts) {
+    const s = t.slope[i];
+    return t.elev[i] !== null && s >= 0 && s <= opts.maxSlope;
+  }
+
   // Время (с) на шаг из клетки a в соседнюю клетку b
   function stepSeconds(t, a, b, opts) {
     const dist = stepDist(t, a, b);
@@ -79,6 +84,79 @@
     // Для отчётов по времени берём базовый штраф 0.5, чтобы варианты сравнивались честно
     const sideways = 1 + 0.5 * Math.pow(t.slope[b] / opts.maxSlope, 2);
     return dist / speed * sideways;
+  }
+
+  // Стоимость шага для поиска. Режимы: time | safe | distance
+  function stepCost(t, a, b, opts) {
+    if (opts.mode === "distance") return stepDist(t, a, b);
+    const base = stepSeconds(t, a, b, opts);
+    if (opts.mode === "safe") return base * (1 + 3 * Math.pow(t.slope[b] / opts.maxSlope, 2));
+    return base;
+  }
+
+  class Heap {
+    constructor() { this.k = []; this.v = []; }
+    get size() { return this.k.length; }
+    push(key, val) {
+      const k = this.k, v = this.v; let i = k.length; k.push(key); v.push(val);
+      while (i > 0) { const p = (i - 1) >> 1; if (k[p] <= k[i]) break; [k[p], k[i]] = [k[i], k[p]]; [v[p], v[i]] = [v[i], v[p]]; i = p; }
+    }
+    pop() {
+      const k = this.k, v = this.v, top = v[0], lk = k.pop(), lv = v.pop();
+      if (k.length) {
+        k[0] = lk; v[0] = lv; let i = 0;
+        for (;;) { const l = 2 * i + 1, r = l + 1; let m = i;
+          if (l < k.length && k[l] < k[m]) m = l; if (r < k.length && k[r] < k[m]) m = r;
+          if (m === i) break; [k[m], k[i]] = [k[i], k[m]]; [v[m], v[i]] = [v[i], v[m]]; i = m; }
+      }
+      return top;
+    }
+  }
+
+  const NEIGHBORS = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]];
+
+  // Пеший A* по сетке (нужен VehicleRouter last-mile и клиентским машинам). Основной foot-маршрут по-прежнему backend.
+  function findPath(t, start, goal, options) {
+    const opts = { ...DEFAULTS, ...options };
+    if (start < 0 || goal < 0 || !passable(t, start, opts) || !passable(t, goal, opts)) return null;
+    const n = t.rows * t.cols;
+    const g = new Float64Array(n).fill(Infinity), came = new Int32Array(n).fill(-1), closed = new Uint8Array(n);
+    const vmax = opts.mode === "distance" ? 1 : toblerKmh(-0.05) * opts.suitSpeedFactor / 3.6;
+    const gr = Math.floor(goal / t.cols), gc = goal % t.cols;
+    const h = (i) => Math.hypot((Math.floor(i / t.cols) - gr) * t.dy, ((i % t.cols) - gc) * t.dx) / vmax;
+    const open = new Heap(); g[start] = 0; open.push(h(start), start);
+    while (open.size) {
+      const cur = open.pop();
+      if (cur === goal) break;
+      if (closed[cur]) continue; closed[cur] = 1;
+      const r = Math.floor(cur / t.cols), c = cur % t.cols;
+      for (const [ddr, ddc] of NEIGHBORS) {
+        const nr = r + ddr, nc = c + ddc;
+        if (nr < 0 || nr >= t.rows || nc < 0 || nc >= t.cols) continue;
+        const nb = nr * t.cols + nc;
+        if (closed[nb] || !passable(t, nb, opts)) continue;
+        const cand = g[cur] + stepCost(t, cur, nb, opts);
+        if (cand < g[nb]) { g[nb] = cand; came[nb] = cur; open.push(cand + h(nb), nb); }
+      }
+    }
+    if (!isFinite(g[goal])) return null;
+    const path = []; for (let i = goal; i !== -1; i = came[i]) path.push(i);
+    return path.reverse();
+  }
+
+  function summarize(t, path, options) {
+    const opts = { ...DEFAULTS, ...options };
+    let distance = 0, ascent = 0, descent = 0, maxSlope = 0, outS = 0, backS = 0;
+    for (let k = 1; k < path.length; k++) {
+      const a = path[k - 1], b = path[k];
+      distance += stepDist(t, a, b);
+      const dz = t.elev[b] - t.elev[a];
+      if (dz > 0) ascent += dz; else descent -= dz;
+      maxSlope = Math.max(maxSlope, t.slope[b]);
+      outS += stepSeconds(t, a, b, opts);
+      backS += stepSeconds(t, b, a, opts);
+    }
+    return { distance, ascent, descent, maxSlope, outS, backS };
   }
 
   // Walk time out and back along a route the backend computed: SIMULATED pace, not a route metric.
@@ -119,7 +197,7 @@
     };
   }
 
-  const api = { createTerrain, computeSlope, stepSeconds: (t, a, b, o) => stepSeconds(t, a, b, { ...DEFAULTS, ...o }), walkSeconds, evaluateEva, metersBetween, DEFAULTS };
+  const api = { createTerrain, computeSlope, stepSeconds: (t, a, b, o) => stepSeconds(t, a, b, { ...DEFAULTS, ...o }), findPath, summarize, walkSeconds, evaluateEva, metersBetween, DEFAULTS };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.Router = api;
 })(typeof window !== "undefined" ? window : globalThis);

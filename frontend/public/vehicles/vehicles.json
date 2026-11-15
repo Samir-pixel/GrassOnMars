@@ -1,0 +1,40 @@
+{
+  "_note": "Single source of truth for the vehicle picker. Route numbers mirror VEHICLES in vehicle-router.js. assumed=true means a team assumption for the demo, not an official NASA figure.",
+  "vehicles": [
+    {
+      "id": "foot", "name": "On foot", "tagline": "Walk in suits from the habitat",
+      "image": null, "scene": null, "model": null,
+      "crew": 2, "pressurized": false,
+      "facts": [],
+      "stats": { "max_slope_deg": 15, "speed": "≈ 2–3.6 km/h (Tobler × 0.6)", "radius_km": null, "limit": "Suit, 8 h" },
+      "why": "Current Marswalk mode: slowest, but reaches any slope up to 15°."
+    },
+    {
+      "id": "mrv", "name": "NASA MRV", "tagline": "Open 2-seat rover for short trips",
+      "image": "images/cutouts/mrv.png", "scene": "images/scenes/mrv.jpg", "model": "models/mrv.glb",
+      "crew": 2, "pressurized": false,
+      "facts": ["Each wheel steers ±180° (NASA)", "Top speed on Earth about 40 mph (NASA)"],
+      "stats": { "max_slope_deg": 15, "speed_kmh": 10, "radius_km": 10, "limit": "Suit 8 h + walk-back rule" },
+      "assumed": true,
+      "why": "Fast, but the crew stays in suits and must be able to walk home if it breaks down."
+    },
+    {
+      "id": "sev", "name": "NASA SEV", "tagline": "Pressurised rover for trips up to 14 days",
+      "image": "images/cutouts/sev.png", "scene": "images/scenes/sev.jpg", "model": "models/sev.glb",
+      "crew": 2, "pressurized": true,
+      "facts": ["Pressurised cabin, no suits while driving", "12 wheels", "Suitports at the rear"],
+      "stats": { "max_slope_deg": 25, "speed_kmh": 8, "radius_km": 100, "limit": "Battery, 14 days" },
+      "assumed": true,
+      "why": "Climbs the steepest ground and goes farthest; suits only for stops."
+    },
+    {
+      "id": "mars_rover", "name": "NASA Mars Rover", "tagline": "Mobile lab for a crew of four",
+      "image": "images/cutouts/mars_rover.png", "scene": "images/scenes/mars_rover.jpg", "model": "models/mars_rover.glb",
+      "crew": 4, "pressurized": true,
+      "facts": ["About 8.5 m long", "6 wheels", "Detachable science module"],
+      "stats": { "max_slope_deg": 18, "speed_kmh": 12, "radius_km": 50, "limit": "Battery, 3 days" },
+      "assumed": true,
+      "why": "Long and heavy: prefers gentle, straight paths, but brings the lab to the outcrop."
+    }
+  ]
+}

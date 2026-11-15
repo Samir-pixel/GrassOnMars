@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<style>html,body{margin:0;overflow:hidden;background:#000}</style>
+<script type="importmap">{"imports":{"three":"./node_modules/three/build/three.module.js","three/addons/":"./node_modules/three/examples/jsm/"}}</script>
+</head><body>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { VignetteShader } from 'three/addons/shaders/VignetteShader.js';
+import { makeMaterials, buildMRV, buildSEV, buildMarsRoverConcept, reseed } from './builder.js';
+
+const q = new URLSearchParams(location.search);
+const mode = q.get('mode');
+
+if (mode === 'export') {
+  reseed(7);
+  const M = makeMaterials();
+  const builds = { mrv: buildMRV, sev: buildSEV, mars_rover: buildMarsRoverConcept };
+  window.__glb = {};
+  const exporter = new GLTFExporter();
+  for (const [k, fn] of Object.entries(builds)) {
+    const obj = fn(M);
+    const buf = await exporter.parseAsync(obj, { binary: true, maxTextureSize: 1024 });
+    let s = ''; const u = new Uint8Array(buf);
+    for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
+    window.__glb[k] = btoa(s);
+  }
+  window.__done = true;
+}
+
+// ---------------- realistic Mars scene ----------------
+function hash(x, y) { const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return s - Math.floor(s); }
+function vnoise(x, y) {
+  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  const a = hash(xi, yi), b = hash(xi + 1, yi), c = hash(xi, yi + 1), d = hash(xi + 1, yi + 1);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+function fbm(x, y, o = 5) { let s = 0, a = 0.5, f = 1; for (let i = 0; i < o; i++) { s += a * vnoise(x * f, y * f); f *= 2.03; a *= 0.5; } return s; }
+
+function canvasTex(n, draw, srgb, rep) {
+  const c = document.createElement('canvas'); c.width = c.height = n; draw(c.getContext('2d'), n);
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rep, rep);
+  t.anisotropy = 16; if (srgb) t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+function regolithTextures(rep) {
+  const n = 1024, hgt = new Float32Array(n * n);
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) hgt[y * n + x] = fbm(x / 64, y / 64, 4) * 0.6 + vnoise(x / 6, y / 6) * 0.25 + Math.random() * 0.15;
+  // pebbles
+  for (let k = 0; k < 900; k++) { const cx = Math.random() * n, cy = Math.random() * n, r = 1.5 + Math.random() * 5;
+    for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++) { const d = Math.hypot(x, y) / r; if (d < 1) { const i = (((cy + y) | 0 + n) % n) * n + (((cx + x) | 0 + n) % n); hgt[i] = Math.max(hgt[i], 0.7 + 0.3 * Math.sqrt(1 - d * d)); } } }
+  const map = canvasTex(n, (g) => {
+    const img = g.createImageData(n, n);
+    for (let i = 0; i < n * n; i++) {
+      const h = hgt[i], t = fbm((i % n) / 200, Math.floor(i / n) / 200, 3);
+      const r = 118 + h * 62 - t * 26, gg = 84 + h * 42 - t * 20, b = 62 + h * 28 - t * 14;
+      img.data[i * 4] = r; img.data[i * 4 + 1] = gg; img.data[i * 4 + 2] = b; img.data[i * 4 + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+  }, true, rep);
+  const normalMap = canvasTex(n, (g) => {
+    const img = g.createImageData(n, n), H = (x, y) => hgt[((y + n) % n) * n + ((x + n) % n)];
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      const dx = (H(x + 1, y) - H(x - 1, y)) * 4, dy = (H(x, y + 1) - H(x, y - 1)) * 4, l = Math.hypot(dx, dy, 1), i = (y * n + x) * 4;
+      img.data[i] = (-dx / l * 0.5 + 0.5) * 255; img.data[i + 1] = (dy / l * 0.5 + 0.5) * 255; img.data[i + 2] = (0.5 / l + 0.5) * 255; img.data[i + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+  }, false, rep);
+  return { map, normalMap };
+}
+
+function buildWorld(scene, renderer, sunDir) {
+  // sky dome: butterscotch Martian sky with bluish halo around the sun
+  const skyMat = new THREE.ShaderMaterial({
+    side: THREE.BackSide, depthWrite: false, uniforms: { sun: { value: sunDir.clone().normalize() } },
+    vertexShader: 'varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+    fragmentShader: `uniform vec3 sun; varying vec3 vDir;
+      void main(){ float h = clamp(vDir.y, -0.1, 1.0);
+        vec3 horizon = vec3(0.84, 0.70, 0.52), zenith = vec3(0.47, 0.39, 0.32);
+        vec3 col = mix(horizon, zenith, pow(max(h,0.0), 0.55));
+        float s = max(dot(normalize(vDir), sun), 0.0);
+        col += vec3(1.0, 0.82, 0.55) * pow(s, 6.0) * 0.45 + vec3(0.75, 0.8, 0.85) * pow(s, 60.0) * 0.5 + vec3(1.0, 0.97, 0.9) * pow(s, 1500.0) * 8.0;
+        gl_FragColor = vec4(col, 1.0); }`
+  });
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(400, 48, 24), skyMat); scene.add(sky);
+  // environment for reflections from the sky
+  const envScene = new THREE.Scene(); envScene.add(new THREE.Mesh(new THREE.SphereGeometry(40, 48, 24), skyMat));
+  const gnd = new THREE.Mesh(new THREE.CircleGeometry(38, 32), new THREE.MeshBasicMaterial({ color: 0x8a4a2c })); gnd.rotation.x = -Math.PI / 2; gnd.position.y = -1; envScene.add(gnd);
+  scene.environment = new THREE.PMREMGenerator(renderer).fromScene(envScene, 0.02).texture;
+  scene.environmentIntensity = 0.75;
+  scene.fog = new THREE.FogExp2(0xc9a882, 0.011);
+
+  // terrain
+  const S = 260, seg = 420, geo = new THREE.PlaneGeometry(S, S, seg, seg); geo.rotateX(-Math.PI / 2);
+  const p = geo.attributes.position, col = new Float32Array(p.count * 3);
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), z = p.getZ(i), d = Math.hypot(x, z);
+    const flat = THREE.MathUtils.smoothstep(d, 7, 22);
+    let h = (fbm(x / 22, z / 22) - 0.5) * 3.2 * flat + (fbm(x / 3, z / 3, 3) - 0.5) * 0.18;
+    h += THREE.MathUtils.smoothstep(d, 60, 130) * (fbm(x / 40 + 9, z / 40) * 26 - 6); // distant hills / crater rim
+    p.setY(i, h);
+    const t = fbm(x / 9 + 3, z / 9, 3); const k = 0.82 + t * 0.3;
+    col[i * 3] = k; col[i * 3 + 1] = k * 0.97; col[i * 3 + 2] = k * 0.95;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3)); geo.computeVertexNormals();
+  const rt = regolithTextures(70);
+  const ground = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: rt.map, normalMap: rt.normalMap, normalScale: new THREE.Vector2(1.2, 1.2), roughness: 0.97, vertexColors: true }));
+  ground.receiveShadow = true; scene.add(ground);
+  // wheel tracks behind the vehicle
+  // rocks
+  const rockMat = new THREE.MeshStandardMaterial({ color: 0x5a4234, roughness: 0.92, normalMap: rt.normalMap, normalScale: new THREE.Vector2(2, 2) });
+  const rockMat2 = new THREE.MeshStandardMaterial({ color: 0x3a312c, roughness: 0.85, normalMap: rt.normalMap, normalScale: new THREE.Vector2(2, 2) });
+  let sd = 3; const r1 = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+  for (let k = 0; k < 420; k++) {
+    const clear = parseFloat(new URLSearchParams(location.search).get('clear') || '5.5'); const a = r1() * Math.PI * 2, d = clear + Math.pow(r1(), 1.6) * 70;
+    const size = (0.05 + Math.pow(r1(), 3) * 0.9) * (d < 10 ? 0.5 : 1);
+    const g = new THREE.IcosahedronGeometry(1, 3), gp = g.attributes.position, v = new THREE.Vector3(), ox = r1() * 50;
+    for (let i = 0; i < gp.count; i++) { v.fromBufferAttribute(gp, i); const n = fbm(v.x * 1.4 + ox, v.y * 1.4 + v.z, 3); v.multiplyScalar(0.75 + n * 0.55); gp.setXYZ(i, v.x, v.y, v.z); }
+    g.computeVertexNormals();
+    const rock = new THREE.Mesh(g, r1() > 0.5 ? rockMat : rockMat2);
+    rock.scale.set(size * (0.8 + r1() * 0.6), size * (0.4 + r1() * 0.4), size * (0.8 + r1() * 0.6));
+    const x = Math.cos(a) * d, z = Math.sin(a) * d;
+    const flat = THREE.MathUtils.smoothstep(Math.hypot(x, z), 7, 22);
+    const h = (fbm(x / 22, z / 22) - 0.5) * 3.2 * flat;
+    rock.position.set(x, h + rock.scale.y * 0.25, z); rock.rotation.set(r1(), r1() * 6, r1());
+    rock.castShadow = rock.receiveShadow = true; scene.add(rock);
+  }
+  // lights
+  const sun = new THREE.DirectionalLight(0xffdcae, 3.4);
+  sun.position.copy(sunDir).multiplyScalar(40); sun.castShadow = true;
+  sun.shadow.mapSize.set(4096, 4096); sun.shadow.bias = -0.0002; sun.shadow.normalBias = 0.02;
+  Object.assign(sun.shadow.camera, { left: -12, right: 12, top: 12, bottom: -12, near: 5, far: 90 });
+  scene.add(sun); scene.add(new THREE.HemisphereLight(0xe6cfb0, 0x4a3426, 0.45));
+  return ground;
+}
+
+if (mode === 'cutout') {
+  const W = innerWidth, H = innerHeight;
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+  renderer.setSize(W, H); renderer.setPixelRatio(devicePixelRatio); renderer.setClearColor(0x000000, 0);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
+  document.body.style.background = 'transparent'; document.documentElement.style.background = 'transparent';
+  document.body.appendChild(renderer.domElement);
+  const scene = new THREE.Scene();
+  const envScene = new THREE.Scene();
+  const skyMat = new THREE.ShaderMaterial({ side: THREE.BackSide, vertexShader: 'varying vec3 d; void main(){ d = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+    fragmentShader: 'varying vec3 d; void main(){ float h = clamp(d.y,0.0,1.0); gl_FragColor = vec4(mix(vec3(0.95,0.9,0.82), vec3(0.75,0.72,0.7), h) * (d.y < 0.0 ? 0.45 : 1.0), 1.0); }' });
+  envScene.add(new THREE.Mesh(new THREE.SphereGeometry(40, 32, 16), skyMat));
+  scene.environment = new THREE.PMREMGenerator(renderer).fromScene(envScene, 0.02).texture; scene.environmentIntensity = 0.9;
+  const key = new THREE.DirectionalLight(0xfff1e0, 2.6); key.position.set(6, 9, 7); scene.add(key);
+  const rim = new THREE.DirectionalLight(0xffd7a8, 1.6); rim.position.set(-8, 5, -6); scene.add(rim);
+  const g = await new GLTFLoader().loadAsync(`./models/${q.get('m')}.glb`);
+  const o = g.scene; scene.add(o);
+  const box = new THREE.Box3().setFromObject(o), size = box.getSize(new THREE.Vector3()), ctr = box.getCenter(new THREE.Vector3());
+  const cam = new THREE.PerspectiveCamera(24, W / H, 0.1, 200);
+  const L = Math.max(size.x, size.z), dist = L * 2.35 + 1.5, az = parseFloat(q.get('az') || '0.62');
+  cam.position.set(ctr.x + Math.cos(az) * dist, size.y * 0.55 + dist * 0.22, ctr.z + Math.sin(az) * dist);
+  cam.lookAt(ctr.x, size.y * 0.45, ctr.z);
+  renderer.render(scene, cam);
+  window.__done = true;
+}
+
+if (mode === 'render') {
+  const W = innerWidth, H = innerHeight;
+  const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+  renderer.setSize(W, H); renderer.setPixelRatio(devicePixelRatio);
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+  document.body.appendChild(renderer.domElement);
+  const scene = new THREE.Scene();
+  const sunDir = new THREE.Vector3(parseFloat(q.get('sx') || '-0.2'), parseFloat(q.get('sy') || '0.38'), parseFloat(q.get('sz') || '-0.9'));
+  buildWorld(scene, renderer, sunDir);
+  const names = (q.get('m') || 'mrv').split(',');
+  const loader = new GLTFLoader();
+  const objs = [];
+  for (const [i, n] of names.entries()) {
+    const g = await loader.loadAsync(`./models/${n}.glb`);
+    const o = g.scene; o.traverse(m => { if (m.isMesh) { m.castShadow = m.receiveShadow = true; } });
+    scene.add(o); objs.push(o);
+  }
+  if (objs.length > 1) { // lineup
+    objs[0].position.set(-2.5, 0, -6.5); objs[0].rotation.y = 0.55;  // mars_rover
+    objs[1].position.set(0.0, 0, 0.0); objs[1].rotation.y = 0.55;    // sev
+    objs[2].position.set(2.5, 0, 5.5); objs[2].rotation.y = 0.55;    // mrv
+  } else objs[0].rotation.y = parseFloat(q.get('rot') || '0');
+  const box = new THREE.Box3(); objs.forEach(o => box.expandByObject(o));
+  const size = box.getSize(new THREE.Vector3()), ctr = box.getCenter(new THREE.Vector3());
+  const cam = new THREE.PerspectiveCamera(parseFloat(q.get('fov') || '30'), W / H, 0.1, 900);
+  const L = Math.max(size.x, size.z), dist = L * parseFloat(q.get('dist') || '1.55') + 2.5;
+  const az = parseFloat(q.get('az') || '0.72'), el = parseFloat(q.get('el') || '0.16');
+  cam.position.set(ctr.x + Math.cos(az) * dist, Math.max(1.4, Math.sin(el) * dist + 0.6), ctr.z + Math.sin(az) * dist);
+  cam.lookAt(ctr.x, size.y * 0.38, ctr.z);
+  const composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, cam));
+  const ao = new GTAOPass(scene, cam, W, H); ao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.5, thickness: 1, scale: 1.2 }); ao.blendIntensity = 0.85;
+  composer.addPass(ao);
+  composer.addPass(new OutputPass());
+  const vg = new ShaderPass(VignetteShader); vg.uniforms.offset.value = 0.9; vg.uniforms.darkness.value = 1.15; composer.addPass(vg);
+  composer.render();
+  window.__done = true;
+}
+</script></body></html>

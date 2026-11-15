@@ -212,10 +212,14 @@
     // Tile layers of the Marswalk backend (NASA Mars Trek mosaics, cached there).
     const tiles = (id, pane, opacity = 1) => {
       const s = services[id];
-      return s && hit(s.bbox) ? L.tileLayer(s.tile_url.replace("{row}", "{y}").replace("{col}", "{x}"), {
-        tileSize: 256, maxNativeZoom: s.max_zoom, maxZoom: 17, noWrap: true, pane, opacity,
+      if (!s || !hit(s.bbox)) return null;
+      // OnMars global mosaics are 512 px tiles whose level 0 matches Leaflet zoom 1.
+      const big = (s.tile_size || 256) >= 512;
+      return L.tileLayer(s.tile_url.replace("{row}", "{y}").replace("{col}", "{x}"), {
+        tileSize: s.tile_size || 256, zoomOffset: big ? -1 : 0, maxNativeZoom: s.max_zoom + (big ? 1 : 0), maxZoom: 17,
+        noWrap: true, pane, opacity,
         bounds: [[s.bbox[1], s.bbox[0]], [s.bbox[3], s.bbox[2]]], attribution: s.attribution,
-      }) : null;
+      });
     };
     const group = (...list) => L.layerGroup(list.filter(Boolean));
     const elVis = renderElevation(t);
@@ -268,9 +272,16 @@
     }
     drawScienceMarkers(scienceTargets);
 
+    // Jezero keeps its controlled pair. Every other region gets the global CTX photo (5 m).
+    // The global HiRISE mosaic is a patchwork with opaque gaps, so it is not stacked on top.
+    const ctxPhoto = tiles("ctx_global", paneFor("imagery"));
+    const photoKind = local || ctxPhoto ? "ctx" : (services.themis_day_ir && hit(services.themis_day_ir.bbox) ? "themis" : "mola");
     const layers = {
-      // Outside the Jezero CTX/HiRISE mosaics the only imagery with global coverage is the MOLA shaded relief.
-      imagery: local ? group(tiles("ctx_ortho_jezero", paneFor("imagery")), tiles("hirise_ortho_jezero", paneFor("imagery"))) : group(tiles("mola_shaded_relief", paneFor("imagery"))),
+      imagery: local
+        ? group(tiles("ctx_ortho_jezero", paneFor("imagery")), tiles("hirise_ortho_jezero", paneFor("imagery")))
+        : ctxPhoto
+          ? group(ctxPhoto)
+          : group(tiles("themis_day_ir", paneFor("imagery"), 1) || tiles("mola_shaded_relief", paneFor("imagery"))),
       elevation: L.imageOverlay(elVis.url, terrainBounds, { pane: paneFor("elevation"), interactive: false, opacity: 0.78, attribution: `${dem} (REAL)` }),
       terrain: L.imageOverlay(renderHillshade(t), terrainBounds, { pane: paneFor("terrain"), interactive: false, opacity: 0.85, className: "terrain-overlay", attribution: `DERIVED Hillshade · ${dem}` }),
       slope: L.imageOverlay(renderSlope(t, 15), terrainBounds, { pane: paneFor("slope"), interactive: false, opacity: 0.9, className: "slope-overlay", attribution: `DERIVED Slope · ${dem}` }),
@@ -307,12 +318,12 @@
         legend: { type: "stops", stops: [["#f59e0b", "MODERATE risk"], ["#ef4444", "HIGH risk"], ["#a78bfa", "UNKNOWN (NoData / gap)"]] },
       },
       {
-        id: "imagery", name: local ? "Orbital imagery" : "Shaded relief (MOLA)", sub: local ? "HiRISE 25 cm · CTX 6 m" : "No CTX/HiRISE mosaic loaded here", visible: true, opacity: 1.0,
+        id: "imagery", name: photoKind === "ctx" ? "Orbital imagery" : photoKind === "themis" ? "Daytime IR (THEMIS)" : "Shaded relief (MOLA)", sub: photoKind === "ctx" ? (local ? "HiRISE 25 cm · CTX 6 m" : "CTX 5 m global mosaic") : photoKind === "themis" ? "100 m · not a visible-light photo" : "463 m · no CTX/HiRISE mosaic here", visible: true, opacity: 1.0,
         status: layers.imagery.getLayers().length ? "integrated" : "Error (tiles offline)",
-        dataClass: local ? "REAL" : "DERIVED", units: local ? "8-bit reflectance RGB/gray" : "8-bit shade", source: local ? "NASA Mars Trek (MRO HiRISE & CTX)" : "NASA Mars Trek (MGS MOLA shaded relief)",
-        date: local ? "2020-08-03 (mosaic; scenes undated)" : ctxDate, resolution: local ? "0.25–6 m/px" : "463 m/px", crs: "SRID 949900 / EPSG:104905",
+        dataClass: "REAL", units: photoKind === "mola" ? "8-bit shade" : "8-bit reflectance / IR", source: photoKind === "ctx" ? "NASA Mars Trek (MRO HiRISE & CTX)" : photoKind === "themis" ? "NASA Mars Trek (Mars Odyssey THEMIS)" : "NASA Mars Trek (MGS MOLA shaded relief)",
+        date: photoKind === "ctx" ? (local ? "2020-08-03 (mosaic; scenes undated)" : "CTX through 2020; HiRISE frames undated") : photoKind === "themis" ? "2018-10 mosaic (individual scenes undated)" : ctxDate, resolution: photoKind === "ctx" ? (local ? "0.25–6 m/px" : "5 m/px, finer where HiRISE exists") : photoKind === "themis" ? "100 m/px" : "463 m/px", crs: "SRID 949900 / EPSG:104905",
         nodata: "Transparent outside footprint",
-        legend: { type: "note", text: local ? "Controlled ortho-mosaics (visual context; not radiometric albedo)." : "Shading computed from MOLA elevations (visual context; not a photograph)." },
+        legend: { type: "note", text: photoKind === "ctx" ? (local ? "Controlled ortho-mosaics (visual context; not radiometric albedo)." : "Murray Lab global CTX mosaic, about 5 m per pixel. Less tightly controlled than the Jezero pair.") : photoKind === "themis" ? "Daytime infrared mosaic." : "Shading computed from MOLA elevations (visual context; not a photograph)." },
       },
       {
         id: "slope", name: "Slope hazard", sub: `DERIVED · max ${qRep.slope_max_deg ?? "30"}°`, visible: true, opacity: 0.9,
@@ -324,6 +335,7 @@
         legend: { type: "stops", stops: [["rgba(233,180,76,.85)", "Steep (9°–14°)"], ["rgb(240,106,91)", "Hazard (≥ 15°)"]] },
       },
       {
+        // Outside Jezero there is no CTX/HiRISE mosaic: show the DEM colour ramp so the map is never a blank zoom into one MOLA cell.
         id: "elevation", name: "Elevation", sub: `${Math.round(elVis.min)}…${Math.round(elVis.max)} m`, visible: false, opacity: 0.78,
         status: `server ${dem}`, dataClass: "REAL", units: "metres (MOLA areoid)",
         source: `USGS Astrogeology (${demId})`, date: ctxDate,
@@ -415,7 +427,7 @@
     const pinLayer = L.layerGroup().addTo(map);
     const navLayer = L.layerGroup().addTo(map);
 
-    const opts = { maxSlope: 15, suitHours: 8, startHour: 9, radiusM: 200, dustTau: 0.45 };
+    const opts = { maxSlope: 15, suitHours: 8, startHour: 9, radiusM: 200, dustTau: 0.45, vehicle: "foot" };
     let start = habitat;
     // A region without a named feature starts with B 0.1° east of the landing point (inside every 1° window); a map click moves it.
     let current = targets[0] || { id: "custom", name: "Custom point", icon: "map-pin", latlng: [habitat.latlng[0], habitat.latlng[1] + 0.1],
@@ -483,21 +495,36 @@
       return v;
     }
 
+    function drawPath(cells, style, onClick) {
+      if (!cells || cells.length < 2) return;
+      const line = cells.map((i) => t.latLngOf(i));
+      const pl = L.polyline(line, style);
+      if (onClick) pl.on("click", onClick);
+      pl.addTo(routeLayer);
+    }
+
     function drawRoutes() {
       routeLayer.clearLayers();
       if (!plan) return;
       const sel = plan.variants.find((v) => v.id === selectedId);
       for (const v of plan.variants) {
         if (v === sel) continue;
-        const line = v.cells.map((i) => t.latLngOf(i));
-        L.polyline(line, { weight: 4, opacity: 0.75, dashArray: "2 8", lineCap: "round", interactive: true, className: `alt-line alt-${v.id}` })
-          .on("click", () => api.selectVariant(v.id))
-          .addTo(routeLayer);
+        drawPath(v.cells, { weight: 4, opacity: 0.75, dashArray: "2 8", lineCap: "round", interactive: true, className: `alt-line alt-${v.id}` }, () => api.selectVariant(v.id));
       }
       if (sel) {
-        const line = sel.cells.map((i) => t.latLngOf(i));
-        L.polyline(line, { className: "route-casing", weight: 10, interactive: false }).addTo(routeLayer);
-        L.polyline(line, { className: `route-line sel-${sel.id}`, weight: 5, interactive: false }).addTo(routeLayer);
+        const drive = sel.driveCells || sel.cells;
+        const walk = sel.walkCells;
+        drawPath(drive, { className: "route-casing", weight: 10, interactive: false });
+        drawPath(drive, { className: `route-line sel-${sel.id}`, weight: 5, interactive: false });
+        if (walk && walk.length > 1) {
+          drawPath(walk, { className: "route-casing", weight: 8, interactive: false, dashArray: "1 10" });
+          drawPath(walk, { weight: 4, opacity: 0.95, dashArray: "6 10", color: "#e8f0ff", interactive: false });
+        }
+        if (sel.park != null && sel.park >= 0 && walk) {
+          L.marker(t.latLngOf(sel.park), { icon: pinIcon("car", "home"), interactive: false, keyboard: false, title: "Vehicle park" })
+            .bindTooltip("Park · last mile on foot", { permanent: true, direction: "right", offset: [18, 0], className: "pin-tip home" })
+            .addTo(routeLayer);
+        }
       }
     }
 
@@ -521,23 +548,119 @@
       emit();
     }
 
+    function profileOf(cells) {
+      const out = []; let d = 0;
+      for (let k = 0; k < cells.length; k++) {
+        if (k) d += Router.metersBetween(t.latLngOf(cells[k - 1]), t.latLngOf(cells[k]));
+        const e = t.elev[cells[k]];
+        out.push([d, e == null || Number.isNaN(e) ? 0 : e]);
+      }
+      return out;
+    }
+
+    // Client-side vehicle plan shaped like a backend alternative so the panel/compare stay shared.
+    function toVehicleVariant(spec, trip) {
+      const cells = (trip.driveCells || []).concat((trip.walkCells || []).slice(1));
+      const sum = {
+        distance: trip.sum.distance + (trip.walk ? trip.walk.distance : 0),
+        ascent: trip.sum.ascent + (trip.walk ? trip.walk.ascent : 0),
+        descent: trip.sum.descent + (trip.walk ? trip.walk.descent : 0),
+        maxSlope: Math.max(trip.sum.maxSlope, trip.walk ? trip.walk.maxSlope : 0),
+        outS: trip.sum.outS + (trip.walk ? trip.walk.outS : 0),
+        backS: trip.sum.backS + (trip.walk ? trip.walk.backS : 0),
+      };
+      const limitS = opts.suitHours * 3600 / 1.3;
+      const eva = {
+        totalS: trip.totalS, limitS, endHour: opts.startHour + trip.totalS / 3699,
+        go: trip.go, reasons: trip.reasons, o2Used: trip.o2Used, caution: (trip.cautions || []).length > 0,
+        energyUsed: trip.energyUsed, walkBackS: trip.walkBackS, cautions: trip.cautions || [],
+      };
+      const emptyShare = { smooth: 0, moderate: 0, steep: 0, hazard: 0, LOW: 1, MODERATE: 0, HIGH: 0 };
+      return {
+        ...spec, bonus: [], sameAs: "",
+        cells, driveCells: trip.driveCells, walkCells: trip.walkCells, park: trip.park,
+        sum, stopMinutes: current.minutes || 0, profile: profileOf(cells), eva, vehicle: trip.vehicle,
+        alt: {
+          mode: spec.mode, status: "found", explanation: `${VehicleRouter.VEHICLES[trip.vehicle].name}: client A* on the open DEM (demo assumptions, not official NASA specs).`,
+          total_distance_m: sum.distance, ascent_m: sum.ascent, descent_m: sum.descent,
+          max_slope_deg: sum.maxSlope, mean_slope_deg: sum.maxSlope,
+          extra_distance_vs_shortest_m: 0, science_targets: [],
+          terrain: { class_share: emptyShare, roughness_mean_m: 0, roughness_max_m: 0 },
+          hazard: { class_share: emptyShare, mean_risk: 0, max_risk: 0 },
+          data_quality: { mean_uncertainty: 0, max_uncertainty: 0 },
+          cost: { total: sum.distance, distance: sum.distance, slope: 0, roughness: 0, hazard: 0, uncertainty: 0, science_discount: 0 },
+          weights: {}, algorithm: "astar", nodes_expanded: cells.length, constraints: [],
+        },
+      };
+    }
+
+    function calculateVehicles() {
+      const s = t.cellOf(start.latlng[0], start.latlng[1]), g = t.cellOf(current.latlng[0], current.latlng[1]);
+      const modes = mode ? VARIANTS.filter((v) => v.mode === mode) : VARIANTS;
+      const tripOpts = { suitHours: opts.suitHours, startHour: opts.startHour, dustTau: opts.dustTau, stopMinutes: current.minutes || 0, footMaxSlope: 15 };
+      const variants = [], unreachable = [];
+      for (const spec of modes) {
+        const vrMode = spec.mode === "SHORTEST" ? "distance" : spec.mode === "LOWEST_TERRAIN_RISK" ? "safe" : "time";
+        let trip = null;
+        if (spec.mode === "SCIENCE_PRIORITY" && routeWaypoints[0]) {
+          const mid = t.cellOf(routeWaypoints[0].lat, routeWaypoints[0].lon);
+          const a = VehicleRouter.planTrip(Router, t, s, mid, opts.vehicle, { ...tripOpts, mode: "time" });
+          const b = a && VehicleRouter.planTrip(Router, t, mid, g, opts.vehicle, { ...tripOpts, mode: "time" });
+          if (a && b) {
+            const driveCells = (a.driveCells || []).concat((b.driveCells || []).slice(1));
+            const walkCells = b.walkCells || a.walkCells;
+            const sum = {
+              distance: a.sum.distance + b.sum.distance, ascent: a.sum.ascent + b.sum.ascent, descent: a.sum.descent + b.sum.descent,
+              maxSlope: Math.max(a.sum.maxSlope, b.sum.maxSlope), outS: a.sum.outS + b.sum.outS, backS: a.sum.backS + b.sum.backS,
+              energyWh: a.sum.energyWh + b.sum.energyWh, farthestM: Math.max(a.sum.farthestM, b.sum.farthestM), farthestIdx: a.sum.farthestIdx,
+            };
+            const merged = VehicleRouter.evaluateTrip(Router, t, driveCells, sum, walkCells ? Router.summarize(t, walkCells, { maxSlope: 15 }) : null, opts.vehicle, tripOpts);
+            trip = { vehicle: opts.vehicle, driveCells, walkCells, park: b.park ?? a.park, sum, walk: walkCells ? Router.summarize(t, walkCells, { maxSlope: 15 }) : null, ...merged };
+          }
+        } else {
+          trip = VehicleRouter.planTrip(Router, t, s, g, opts.vehicle, { ...tripOpts, mode: vrMode });
+        }
+        if (!trip) unreachable.push({ ...spec, alt: { mode: spec.mode, status: "unreachable", reason: "No path within this vehicle's slope limit." } });
+        else variants.push(toVehicleVariant(spec, trip));
+      }
+      if (variants.length) {
+        const base = Math.min(...variants.map((v) => v.sum.distance));
+        for (const v of variants) v.alt.extra_distance_vs_shortest_m = Math.max(0, v.sum.distance - base);
+      }
+      return {
+        start, target: current, variants, unreachable, opts: { ...opts },
+        response: {
+          alternatives: [...variants.map((v) => v.alt), ...unreachable.map((u) => u.alt)],
+          grid: { cell_m: [t.dx, t.dy] }, data_class: "DERIVED", warnings: ["Vehicle routes are client-side demo assumptions, not official NASA specs."],
+          cost_model: { formula: "VehicleRouter A*", units: "m / Wh", terms: {} }, limitations: ["Pressurised cabin / battery figures are team assumptions for the demo."],
+        },
+      };
+    }
+
     async function calculate() {
       const seq = ++reqSeq;
       plan = null; selectedId = null; status = "loading";
       emit();
       try {
-        const res = await MarswalkApi.planRoute({
-          start: { lat: start.latlng[0], lon: start.latlng[1] },
-          destination: { lat: current.latlng[0], lon: current.latlng[1] },
-          waypoints: routeWaypoints.map((w) => ({ lat: w.lat, lon: w.lon })),
-          modes: mode ? [mode] : undefined, max_slope_deg: opts.maxSlope, science_radius_m: opts.radiusM,
-        });
-        if (seq !== reqSeq) return; // an input changed or a newer request started while this one ran
-        const variants = res.alternatives.filter((a) => a.status === "found").map(toVariant);
-        plan = { start, target: current, variants, opts: { ...opts }, response: res,
-          unreachable: res.alternatives.filter((a) => a.status !== "found").map((alt) => ({ ...byMode(alt.mode), alt })) };
-        selectedId = variants.length ? variants[0].id : null;
-        status = "ready";
+        if (opts.vehicle && opts.vehicle !== "foot") {
+          if (seq !== reqSeq) return;
+          plan = calculateVehicles();
+          selectedId = plan.variants.length ? plan.variants[0].id : null;
+          status = "ready";
+        } else {
+          const res = await MarswalkApi.planRoute({
+            start: { lat: start.latlng[0], lon: start.latlng[1] },
+            destination: { lat: current.latlng[0], lon: current.latlng[1] },
+            waypoints: routeWaypoints.map((w) => ({ lat: w.lat, lon: w.lon })),
+            modes: mode ? [mode] : undefined, max_slope_deg: opts.maxSlope, science_radius_m: opts.radiusM,
+          });
+          if (seq !== reqSeq) return; // an input changed or a newer request started while this one ran
+          const variants = res.alternatives.filter((a) => a.status === "found").map(toVariant);
+          plan = { start, target: current, variants, opts: { ...opts }, response: res,
+            unreachable: res.alternatives.filter((a) => a.status !== "found").map((alt) => ({ ...byMode(alt.mode), alt })) };
+          selectedId = variants.length ? variants[0].id : null;
+          status = "ready";
+        }
       } catch (e) {
         if (seq !== reqSeq) return;
         status = "error"; error = e.message;
@@ -566,10 +689,11 @@
       setOpt(key, val) {
         opts[key] = val;
         if (key === "maxSlope") layers.slope.setUrl(renderSlope(t, val));
-        if (key === "maxSlope" || key === "radiusM") return invalidate(); // route preferences: recalculate on the backend
+        if (key === "maxSlope" || key === "radiusM" || key === "vehicle") return invalidate(); // route preferences: recalculate
         if (plan) { plan.opts = { ...opts }; plan.variants.forEach(walkCheck); } // walk settings only re-run the SIMULATED check
         emit();
       },
+      getOpts() { return { ...opts }; },
       setScienceTargets(list) {
         drawScienceMarkers(list);
         specMap.science.sub = `${list.length} shown`;

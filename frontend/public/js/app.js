@@ -975,11 +975,12 @@
     missionHazards = hazards.filter((h) => h.lat != null && h.lon != null && inRegion(h));
     const local = region.id === "jezero", cell = terrainData.cell_m.map(Math.round).join(" × ");
     const habitat = { id: "habitat", name: "Habitat", icon: "house", latlng: [region.landing.lat, region.landing.lon], why: region.landing.name };
-    // B outside Jezero: IAU-named features inside the region window (the backend lists the nearest six).
+    // B outside Jezero: IAU features on the DEM, far enough from A that flyToBounds does not zoom into one empty MOLA cell.
+    const grid = Router.createTerrain(terrainData);
     missionTargets = local ? TARGETS : region.destinations.map((d, k) => ({
       id: `iau-${k}`, name: d.name, icon: "circle-dot", latlng: [d.lat, d.lon], minutes: 15, tag: d.feature_type,
       source: "IAU Gazetteer of Planetary Nomenclature (USGS)", why: `${d.feature_type} named by the IAU${d.diameter_km ? `, about ${d.diameter_km} km across` : ""}.`,
-    }));
+    })).filter((d) => grid.cellOf(d.latlng[0], d.latlng[1]) >= 0 && Router.metersBetween(habitat.latlng, d.latlng) >= 1500);
     $("region-select").value = region.id;
     $("region-select").disabled = false;
     $("region-sub").textContent = local ? `${terrainData.meta.dem}, ${cell} m cells`
@@ -1006,7 +1007,18 @@
     renderScienceDetail(scienceTargets[0] || null);
     if (missionHazards[0]) renderHazardCard({ feature: missionHazards[0] });
     renderLayerManager();
-    setTimeout(() => mission.map.flyToBounds(L.latLngBounds([habitat.latlng, mission.current.latlng]).pad(0.7), { duration: 1.4, maxZoom: 13 }), 250);
+    if ($("veh-grid")) {
+      $("veh-hero-img").src = "/vehicles/scenes/lineup.jpg";
+      $("veh-hero-name").textContent = "On foot";
+      $("veh-hero-why").textContent = "Current Marswalk mode: walk in suits from the habitat.";
+      $("veh-grid").querySelectorAll("[data-veh]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.veh === "foot")));
+    }
+    // Jezero: frame A–B. MOLA regions: fit the whole window so the DEM is visible (no maxZoom into one cell).
+    setTimeout(() => {
+      if (!mission) return;
+      if (local) mission.map.flyToBounds(L.latLngBounds([habitat.latlng, mission.current.latlng]).pad(0.7), { duration: 1.4, maxZoom: 13 });
+      else mission.fit();
+    }, 250);
     if (missionBound) return;
     missionBound = true; // the listeners below read the `mission` variable, so they are bound once and serve every region
     $("region-select").addEventListener("change", (e) => loadRegion(e.target.value));
@@ -1064,6 +1076,40 @@
     $("route-mode").addEventListener("change", (e) => mission.setMode(e.target.value));
     $("pick-start").addEventListener("click", () => mission.togglePickStart());
     $("export-route").addEventListener("click", exportRoute);
+    const VEH_UI = [
+      { id: "foot", name: "On foot", tag: "Walk in suits from the habitat", img: "/data/systems/astro.webp", blend: true, scene: "/vehicles/scenes/lineup.jpg", slope: "15°", speed: "≈ 3 km/h", radius: "—", limit: "Suit 8 h", why: "Slowest, but reaches any slope up to 15°." },
+      { id: "mrv", name: "NASA MRV", tag: "Open 2-seat rover for short trips", img: "/vehicles/cutouts/mrv.png", scene: "/vehicles/scenes/mrv.jpg", slope: "15°", speed: "10 km/h", radius: "10 km", limit: "Suit + walk-back", why: "Fast, but the crew must be able to walk home if it breaks down." },
+      { id: "sev", name: "NASA SEV", tag: "Pressurised rover, up to 14 days", img: "/vehicles/cutouts/sev.png", scene: "/vehicles/scenes/sev.jpg", slope: "25°", speed: "8 km/h", radius: "100 km", limit: "Battery, 14 days", why: "Climbs the steepest ground and goes farthest; suits only for stops." },
+      { id: "mars_rover", name: "NASA Mars Rover", tag: "Mobile lab for a crew of four", img: "/vehicles/cutouts/mars_rover.png", scene: "/vehicles/scenes/mars_rover.jpg", slope: "18°", speed: "12 km/h", radius: "50 km", limit: "Battery, 3 days", why: "Long and heavy: prefers gentle paths, brings the lab to the outcrop." },
+    ];
+    function renderVehiclePicker(selected = "foot") {
+      const v = VEH_UI.find((x) => x.id === selected) || VEH_UI[0];
+      $("veh-hero-img").src = v.scene;
+      $("veh-hero-name").textContent = v.name;
+      $("veh-hero-why").textContent = v.why;
+      $("veh-grid").innerHTML = VEH_UI.map((x, i) => `<button type="button" class="veh" data-veh="${x.id}" aria-pressed="${x.id === selected}">
+        <div class="sys-photo"><span class="sys-n">${String(i + 1).padStart(2, "0")}</span><img src="${x.img}" alt="${x.name}"${x.blend ? ' class="blend-black"' : ""}></div>
+        <div class="veh-body"><h4>${x.name}</h4><p>${x.tag}</p>
+        <div class="veh-stats"><div><span>Max slope</span>${x.slope}</div><div><span>Speed</span>${x.speed}</div><div><span>Radius</span>${x.radius}</div><div><span>Limit</span>${x.limit}</div></div></div></button>`).join("");
+      icons();
+    }
+    renderVehiclePicker("foot");
+    $("veh-grid").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-veh]");
+      if (!btn || !mission) return;
+      const id = btn.dataset.veh, meta = VehicleRouter.VEHICLES[id], ui = VEH_UI.find((x) => x.id === id);
+      renderVehiclePicker(id);
+      const slope = meta && meta.maxSlope != null ? meta.maxSlope : 15;
+      $("s-slope").value = slope; $("o-slope").textContent = `${slope}°`;
+      mission.setOpt("vehicle", id);
+      mission.setOpt("maxSlope", slope);
+      const dem = (mission.terrain && mission.terrain.meta && mission.terrain.meta.dem) || "terrain";
+      $("route-grid-note").textContent = id === "foot"
+        ? `A* on the ${dem} grid, server-side`
+        : `VehicleRouter A* · ${ui.name} (demo assumptions)`;
+      mission.calculate();
+      Zyro.post(`${ui.name}: ${ui.why}`, { mood: "cool" });
+    });
     const sliders = [
       ["s-start", "o-start", "startHour", (v) => MarsClock.fmtHours(v)],
       ["s-slope", "o-slope", "maxSlope", (v) => `${v}°`],
@@ -1098,14 +1144,33 @@
     $("start-nav").addEventListener("click", startNav);
   }
 
+  const VEH_REASON = {
+    battery: "Battery would drop below the 20% reserve.",
+    radius: "Farther from the habitat than this vehicle may go.",
+    duration: "Longer than this vehicle's trip limit.",
+    suit: "Suit time runs out before the crew is back.",
+    walkback: "If the rover breaks down, the crew can't walk home in time.",
+    dust: "Dust optical depth is 2 or more: poor visibility and weak solar power.",
+    daylight: "Return is after the 17:30 LMST daylight limit.",
+  };
+
   function verdictFor(v, opts) {
     const eva = v.eva, endTxt = MarsClock.fmtHours(eva.endHour);
     if (!eva.go) {
+      if (opts.vehicle && opts.vehicle !== "foot") {
+        const why = (eva.reasons || []).map((r) => VEH_REASON[r] || r).join(" ");
+        return ["nogo", "No go", why || "This vehicle cannot complete the trip under the current limits."];
+      }
       if (eva.reasons.includes("dust")) return ["nogo", "No go", `Dust optical depth ${opts.dustTau.toFixed(1)} is 2 or more: poor visibility and weak solar power. Wait for clearer air.`];
       if (eva.reasons.includes("suit")) return ["nogo", "No go", `The walk needs ${fmtDur(eva.totalS)}; the suit allows ${fmtDur(eva.limitS)} after the 30% reserve.`];
       return ["nogo", "No go", `Return at ${endTxt} LMST is after the 17:30 daylight limit. Start earlier.`];
     }
     if (eva.caution) return ["care", "Go with caution", `Back at ${endTxt} LMST. Dust τ ${opts.dustTau.toFixed(1)} is elevated; keep line of sight to the habitat.`];
+    if (opts.vehicle && opts.vehicle !== "foot" && eva.energyUsed != null) {
+      const bat = Math.round(eva.energyUsed * 100);
+      const wb = eva.walkBackS != null ? ` Walk-back: ${fmtDur(eva.walkBackS)} of ${fmtDur(eva.limitS)}.` : "";
+      return ["go", "Go", `Back at ${endTxt} LMST · battery ${bat}% used · suit O₂ ${Math.round(eva.o2Used * 100)}%.${wb}`];
+    }
     return ["go", "Go", `Back at ${endTxt} LMST with the 30% oxygen reserve intact.`];
   }
 
@@ -1241,14 +1306,17 @@
     $("o2-text").textContent = `${pct}% of tank`;
 
     const stat = (ic, l, val) => `<div class="stat"><small>${icon(ic)}${l}</small><span class="num mono">${val}</span></div>`;
-    $("stats").innerHTML = [
+    const stats = [
       stat("route", "Distance", fmtKm(v.sum.distance)),
       stat("mountain", "Climb", `${Math.round(v.sum.ascent)} m`),
       stat("trending-down", "Descent", `${Math.round(v.sum.descent)} m`),
       stat("triangle-alert", "Max slope", `${v.sum.maxSlope.toFixed(1)}°`),
       stat("footprints", "Out (simulated)", fmtDur(v.sum.outS)),
       stat("undo-2", "Back (simulated)", fmtDur(v.sum.backS)),
-    ].join("");
+    ];
+    if (v.eva.energyUsed != null) stats.push(stat("battery-charging", "Battery used", `${Math.round(v.eva.energyUsed * 100)}%`));
+    if (v.eva.walkBackS != null) stats.push(stat("person-walking", "Walk-back", `${fmtDur(v.eva.walkBackS)} / ${fmtDur(v.eva.limitS)}`));
+    $("stats").innerHTML = stats.join("");
     renderTimeline(v, opts);
     renderProfile(v.profile);
     const wp = v.alt.science_targets;

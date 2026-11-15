@@ -43,10 +43,80 @@
     }, 30);
   }
 
+  function overlaps(a, b) {
+    return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+  }
+
+  // Сдвиг из левого нижнего угла, если реплика закрывает карточку слоёв или панель.
+  // null — угол свободен, или свободной полосы справа нет.
+  function dodgeBox(box, obstacles, view) {
+    const gap = 12, minW = 200;
+    if (!obstacles.some((o) => overlaps(box, o))) return null;
+    const edge = Math.max(...obstacles.filter((o) => overlaps(box, o)).map((o) => o.right));
+    const left = Math.round(edge + gap);
+    const wall = obstacles
+      .filter((o) => o.left >= edge - 1 && o.top < box.bottom && o.bottom > box.top)
+      .reduce((m, o) => Math.min(m, o.left), view.w);
+    let width = box.width;
+    const limit = Math.min(view.w, wall) - gap;
+    if (left + width > limit) width = Math.floor(limit - left);
+    if (width < minW) return null;
+    const placed = { left, right: left + width, top: box.top, bottom: box.bottom };
+    if (obstacles.some((o) => overlaps(placed, o))) return null;
+    return { left, bottom: Math.round(view.h - box.bottom), width: width < box.width - 1 ? Math.round(width) : null };
+  }
+
+  (function () {
+    const view = { w: 1280, h: 800 };
+    const card = { left: 14, right: 306, top: 70, bottom: 760 };
+    const panel = { left: 880, right: 1280, top: 56, bottom: 800 };
+    const box = { left: 20, right: 420, top: 560, bottom: 688, width: 400, height: 128 };
+    const d = dodgeBox(box, [card, panel], view);
+    const moved = d && { left: d.left, right: d.left + (d.width || box.width), top: box.top, bottom: box.bottom };
+    if (!d || overlaps(moved, card) || overlaps(moved, panel)) throw new Error("buddy still covers the layers card");
+    if (dodgeBox({ left: 400, right: 760, top: 560, bottom: 688, width: 360, height: 128 }, [card, panel], view) !== null) throw new Error("buddy dodge moved a clear bubble");
+    const tight = dodgeBox(box, [card, { left: 551, right: 901, top: 56, bottom: 800 }], { w: 901, h: 800 });
+    if (!tight || tight.left <= card.right || tight.left + tight.width > 539) throw new Error("buddy dodge misses the panel");
+  })();
+
+  let dodged = false;
+  function shownRect(el) {
+    if (!el || el.hidden) return null;
+    const s = getComputedStyle(el);
+    if (s.display === "none" || s.visibility === "hidden") return null;
+    const r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) return null;
+    return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+  }
+  function dodge(box) {
+    const obstacles = [shownRect($("layers-card"))];
+    const view = $("view-mission");
+    if (view && view.hasAttribute("data-active")) obstacles.push(shownRect(view.querySelector(".mission-panel")));
+    const b = box.getBoundingClientRect();
+    if (b.width < 10) return;
+    const spot = dodgeBox(
+      { left: b.left, right: b.right, top: b.top, bottom: b.bottom, width: b.width, height: b.height },
+      obstacles.filter(Boolean),
+      { w: root.innerWidth, h: root.innerHeight }
+    );
+    if (!spot) return;
+    dodged = true;
+    box.style.left = `${spot.left}px`;
+    box.style.bottom = `${spot.bottom}px`;
+    if (spot.width) box.style.width = `${spot.width}px`;
+  }
+
   function place(anchor) {
     const box = $("buddy");
     box.classList.toggle("anchored", !!anchor);
-    if (!anchor) { box.style.left = box.style.top = ""; return; }
+    box.style.width = "";
+    dodged = false;
+    if (!anchor) {
+      box.style.left = box.style.top = box.style.bottom = box.style.right = "";
+      dodge(box);
+      return;
+    }
+    box.style.bottom = box.style.right = "";
     const r = anchor.getBoundingClientRect();
     const W = root.innerWidth, H = root.innerHeight;
     const bw = Math.min(380, W - 24), bh = box.offsetHeight || 170;
@@ -171,7 +241,11 @@
     const box = $("buddy");
     box.addEventListener("mouseenter", () => { hovering = true; });
     box.addEventListener("mouseleave", () => { hovering = false; });
-    root.addEventListener("resize", () => { if (!box.hidden && touring && !autoTimer) hide(); });
+    root.addEventListener("resize", () => {
+      if (box.hidden) return;
+      if (touring && !autoTimer) { hide(); return; }
+      if (dodged) place(null);
+    });
     document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !box.hidden) { stopTour(); hide(); } });
   }
 

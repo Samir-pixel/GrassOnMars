@@ -46,6 +46,8 @@ MAX_CAPABILITIES_BYTES = 2_000_000
 # media type -> (file signature, cache extension)
 TILE_FORMATS = {"image/jpeg": (b"\xff\xd8\xff", "jpg"), "image/png": (b"\x89PNG", "png")}
 PLACEHOLDERS = ("{Style}", "{TileMatrixSet}", "{TileMatrix}", "{TileRow}", "{TileCol}")
+# Trek's global CTX and HiRISE mosaics publish tiles on Esri OnMars. Only that prefix is accepted.
+ONMARS_PREFIX = "https://astro.arcgis.com/arcgis/rest/services/OnMars/"
 NS = {"wmts": "http://www.opengis.net/wmts/1.0", "ows": "http://www.opengis.net/ows/1.1"}
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_.-]{1,120}$")  # identifiers become URL and cache path parts
 
@@ -141,6 +143,30 @@ LAYERS = (
         z_index=15,
         visible_by_default=False,
         limitations_ru=THERMAL_PICTURE_RU + IMAGE_ONLY_RU,
+    ),
+    TrekLayerSpec(
+        identifier="CTX_beta01_uncontrolled_5m_Caltech",
+        dataset_id="mro_ctx_murray_global_5m",
+        layer_id="ctx_global",
+        title_ru="CTX глобальная мозаика, 5 м",
+        mission_id="mro",
+        instrument_id="ctx",
+        resolution_m=5.0,
+        z_index=18,
+        visible_by_default=False,
+        limitations_ru="Неконтролируемая глобальная мозаика Murray Lab, около 5 м/пиксель. Не заменяет контролируемую мозаику Езеро. " + IMAGE_ONLY_RU,
+    ),
+    TrekLayerSpec(
+        identifier="HiRISE_Global",
+        dataset_id="mro_hirise_global_uncontrolled",
+        layer_id="hirise_global",
+        title_ru="HiRISE глобальная мозаика",
+        mission_id="mro",
+        instrument_id="hirise",
+        resolution_m=0.3,
+        z_index=28,
+        visible_by_default=False,
+        limitations_ru="Только там, где есть снимок HiRISE: остальное прозрачно. Неконтролируемая мозаика. " + IMAGE_ONLY_RU,
     ),
     TrekLayerSpec(
         identifier="THEMIS_NightIR_ControlledMosaics_100m_v2_oct2018",
@@ -241,14 +267,22 @@ def parse_capabilities(xml: bytes, url: str) -> WmtsLayer:
             (corners == {(-180.0, 90.0)}, "tile grid does not start at 180°W 90°N"),
             (all(m.identifier.isdigit() and min(m.matrix_width, m.matrix_height, m.tile_width, m.tile_height) > 0 for m in matrices), "bad tile matrix"),
             (-180 <= min_lon < max_lon <= 180 and -90 <= min_lat < max_lat <= 90, "bounding box outside Mars lon/lat range"),
-            # Tiles are fetched only from Trek itself, whatever a capabilities document says.
-            (result.template.startswith("https://trek.nasa.gov/") and all(p in result.template for p in PLACEHOLDERS), "unexpected tile URL template"),
+            # Trek hosts most mosaics. The global CTX and HiRISE ones name Esri OnMars in the capabilities Trek itself publishes.
+            (_template_ok(result.template), "unexpected tile URL template"),
         )
         if not ok
     ]
     if problems:
         raise _invalid(url, "; ".join(problems))
     return result
+
+
+def _template_ok(template: str) -> bool:
+    if template.startswith("https://trek.nasa.gov/"):
+        return all(p in template for p in PLACEHOLDERS)
+    if template.startswith(ONMARS_PREFIX):
+        return all(p in template for p in ("{TileMatrix}", "{TileRow}", "{TileCol}"))
+    return False
 
 
 def tile_url(layer: WmtsLayer, z: int, row: int, col: int) -> str:
