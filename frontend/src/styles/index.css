@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-signal: #ed2023;
+  --color-black: #000000;
+  --color-ink: #2b2f36;
+  --color-menu-edge: #8c8e92;
+  --color-paper: #ffffff;
+}
+
+.paper-halftone {
+  background-color: var(--color-paper);
+  background-image: radial-gradient(rgba(43, 47, 54, 0.04) 1.2px, transparent 1.2px);
+  background-size: 10px 10px;
+}
+
+.charcoal-halftone {
+  background-color: var(--color-ink);
+  background-image: radial-gradient(rgba(255, 255, 255, 0.1) 1.5px, transparent 1.5px);
+  background-size: 10px 10px;
+}

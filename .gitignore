@@ -1,0 +1,43 @@
+# Secrets & local environment
+.env
+.env.*
+!.env.example
+
+# Local dev runtimes & caches
+.local/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Frontend dependencies & build
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+
+# Scientific data binaries (keep directory structure only)
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+data/samples/*
+!data/samples/.gitkeep
+data/metadata/*
+!data/metadata/.gitkeep
+
+# IDE & OS
+.DS_Store
+Thumbs.db
+
+# Designer rebuildables / superseded monolith (sources live under design/marswalk-platform and frontend/)
+design/archive/
+design/marswalk-platform/dist/
+
+# Backend local venv (also covered by .venv/, keep explicit)
+backend/.venv/
+
+# History rebuilt without co-author trailers.

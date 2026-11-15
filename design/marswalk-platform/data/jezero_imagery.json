@@ -1,0 +1,21 @@
+{
+  "outer": {
+    "url": "data/jezero_ctx.jpg",
+    "bounds": {
+      "west": 77.3,
+      "south": 18.3,
+      "east": 77.6,
+      "north": 18.55
+    }
+  },
+  "inner": {
+    "url": "data/jezero_hirise.jpg",
+    "bounds": {
+      "west": 77.345,
+      "south": 18.415,
+      "east": 77.47,
+      "north": 18.495
+    }
+  },
+  "credit": "HiRISE: NASA/JPL-Caltech/UArizona \u00b7 CTX: NASA/JPL-Caltech/MSSS \u00b7 tiles: Jez Explore (A. D. Weigel)"
+}

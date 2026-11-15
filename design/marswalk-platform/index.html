@@ -1,0 +1,750 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Marswalk, Grass on Mars</title>
+  <meta name="description" content="Decision support for Mars surface operations: choose a site and plan a safe Marswalk with NASA data. NASA Space Apps 2026, team Grass on Mars.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Inter+Tight:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="vendor/leaflet.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="shell">
+
+  <!-- Стартовый экран -->
+  <div class="intro" id="intro">
+    <div class="intro-card">
+      <div class="intro-left">
+        <img class="intro-photo" id="intro-photo" alt="Zyro on the surface of Mars">
+        <span class="intro-ai">AI-generated image</span>
+        <span class="pill">NASA Space Apps 2026</span>
+        <div class="intro-copy">
+          <h1>Plan safe Marswalks with NASA data</h1>
+          <p>Decision support for the first crews on Mars: pick where to work, then plan and walk a route with a live safety check.</p>
+        </div>
+        <ol class="intro-steps">
+          <li class="on"><span>1</span>Compare territories</li>
+          <li><span>2</span>Plan the walk</li>
+          <li><span>3</span>Walk with Zyro</li>
+        </ol>
+      </div>
+      <div class="intro-right">
+        <img class="intro-face" data-zyro-face alt="Zyro">
+        <h2>Mission control</h2>
+        <p>Zyro, your mission assistant, explains every recommendation with the data behind it.</p>
+        <button type="button" class="btn primary wide" id="intro-go">Enter mission control <i data-lucide="arrow-right"></i></button>
+        <button type="button" class="btn ghost wide" id="intro-story"><i data-lucide="play"></i>Watch the 2-minute story</button>
+        <button type="button" class="btn ghost wide" id="intro-method">How it works</button>
+        <dl class="intro-facts">
+          <div><dt>Sites analysed</dt><dd>14</dd></div>
+          <div><dt>NASA datasets</dt><dd>10</dd></div>
+          <div><dt>Case study</dt><dd>Jezero</dd></div>
+        </dl>
+      </div>
+    </div>
+  </div>
+
+  <header class="topbar">
+    <button type="button" class="menu-btn" id="menu-btn" aria-haspopup="dialog" aria-controls="menu" aria-label="Open menu"><i data-lucide="layout-grid"></i><span>Menu</span></button>
+    <div class="brand">
+      <span class="mark" aria-hidden="true"></span>
+      <div class="brand-text"><b>Marswalk</b><small>Grass on Mars</small></div>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      <button class="tab" role="tab" id="tab-overview" data-tab="overview" aria-selected="true" aria-controls="view-overview"><i data-lucide="globe"></i><span data-i18n="tab_overview">Overview</span></button>
+      <button class="tab" role="tab" id="tab-compare" data-tab="compare" aria-selected="false" aria-controls="view-compare"><i data-lucide="scale"></i><span data-i18n="tab_compare">Compare sites</span></button>
+      <button class="tab" role="tab" id="tab-concept" data-tab="concept" aria-selected="false" aria-controls="view-concept"><i data-lucide="rocket"></i><span data-i18n="tab_concept">Mission concept</span></button>
+      <button class="tab" role="tab" id="tab-mission" data-tab="mission" aria-selected="false" aria-controls="view-mission"><i data-lucide="footprints"></i><span data-i18n="tab_mission">Marswalk</span></button>
+      <button class="tab" role="tab" id="tab-env" data-tab="env" aria-selected="false" aria-controls="view-env"><i data-lucide="thermometer"></i><span data-i18n="tab_env">Environment</span></button>
+      <button class="tab" role="tab" id="tab-method" data-tab="method" aria-selected="false" aria-controls="view-method"><i data-lucide="book-open"></i><span data-i18n="tab_method">Method</span></button>
+    </nav>
+    <div class="top-right">
+      <button type="button" class="chip story-btn" id="story-btn" title="Play the 2-minute story"><i data-lucide="play"></i><span data-i18n="story">Story</span></button>
+      <span class="chip sky-chip" id="sky-chip" data-phase="day" title="Local mean solar time at Jezero (Mars24)">
+        <svg class="sky-arc" viewBox="0 0 40 22" aria-hidden="true">
+          <path class="sky-horizon" d="M1 19.5 H39"/>
+          <path class="sky-path" d="M4 19.5 A16 16 0 0 1 36 19.5"/>
+          <g class="sky-stars"><circle cx="9" cy="6" r=".8"/><circle cx="20" cy="3" r=".7"/><circle cx="31" cy="7" r=".8"/><circle cx="26" cy="12" r=".6"/></g>
+          <circle class="sky-body" id="sky-body" cx="20" cy="4" r="3.4"/>
+        </svg>
+        <span class="sky-text"><b class="mono" id="clock-text">--:--</b><small id="clock-phase">Jezero</small></span>
+      </span>
+      <span class="chip mono hide-sm" title="Sols since Perseverance landed"><span id="sol-text">Sol ----</span></span>
+      <button type="button" class="zyro-btn" id="zyro-btn" aria-expanded="false" aria-controls="zyro">
+        <img data-zyro-face alt=""><span>Ask Zyro</span><span class="unread" id="zyro-unread" hidden>1</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- 1. Обзор: весь Марс -->
+  <section class="view" id="view-overview" role="tabpanel" aria-labelledby="tab-overview" data-active>
+    <div class="stage" id="globe-stage" data-mode="3d">
+      <div class="globe-glow" aria-hidden="true"></div>
+      <div class="globe-canvas"></div>
+      <div class="globe-pins"></div>
+      <div class="flat-map"><div class="flat-inner"><img alt="Map of the whole of Mars"><div class="flat-pins"></div></div></div>
+
+      <div class="hero">
+        <span class="eyebrow" data-i18n="hero_eyebrow">Site selection</span>
+        <h1 data-i18n-html="hero_title">Where to work on Mars</h1>
+        <div class="kpis" id="kpis" aria-label="Summary"></div>
+      </div>
+
+      <div class="filterbar" id="filters" role="group" aria-label="Filter sites"></div>
+
+      <div class="layers-pop" id="layers-pop" hidden>
+        <span class="eyebrow">Show on the map</span>
+        <label><input type="checkbox" data-show="labels" checked><span><i data-lucide="tag"></i>Names next to points</span></label>
+        <label><input type="checkbox" data-show="missions" checked><span><i data-lucide="bot"></i>Landers and rovers</span></label>
+        <label><input type="checkbox" data-show="excluded" checked><span><i data-lucide="ban"></i>Sites outside the limits</span></label>
+        <label><input type="checkbox" data-show="photos"><span><i data-lucide="camera"></i>Only sites with photos</span></label>
+        <span class="eyebrow">Legend</span>
+        <ul class="legend">
+          <li><span class="lg lg-ice"><i data-lucide="snowflake"></i></span>Water ice</li>
+          <li><span class="lg lg-water"><i data-lucide="droplets"></i></span>Ancient water</li>
+          <li><span class="lg"><i data-lucide="gem"></i></span>Minerals</li>
+          <li><span class="lg"><i data-lucide="triangle"></i></span>Volcano or canyon</li>
+          <li><span class="lg lg-mission"><i data-lucide="bot"></i></span>Lander or rover</li>
+          <li><span class="lg lg-play"><i data-lucide="footprints"></i></span>Marswalk ready</li>
+        </ul>
+      </div>
+
+      <div class="stage-tools">
+        <button type="button" class="btn-layers" id="layers-btn" aria-expanded="false" aria-controls="layers-pop"><i data-lucide="layers"></i>Layers</button>
+        <div class="seg" role="group" aria-label="Map style">
+          <button type="button" data-mode="3d" aria-pressed="true">3D</button>
+          <button type="button" data-mode="2d" aria-pressed="false">2D</button>
+        </div>
+        <button type="button" class="icon-btn" id="zoom-in" aria-label="Zoom in"><i data-lucide="plus"></i></button>
+        <button type="button" class="icon-btn" id="zoom-out" aria-label="Zoom out"><i data-lucide="minus"></i></button>
+      </div>
+    </div>
+
+    <aside class="panel" id="site-panel" aria-live="polite"></aside>
+  </section>
+
+  <!-- 2. Сравнение территорий -->
+  <section class="view view-page" id="view-compare" role="tabpanel" aria-labelledby="tab-compare">
+    <div class="page">
+      <div class="page-head">
+        <div>
+          <span class="eyebrow">Decision logic</span>
+          <h1>Which territory fits the mission?</h1>
+          <p>Every site gets a suitability index from five measurable parameters. Sites outside the exploration-zone limits are excluded before ranking.</p>
+        </div>
+        <div class="seg seg-lg" id="profile-seg" role="group" aria-label="Mission profile"></div>
+      </div>
+
+      <div class="podium" id="podium" aria-label="Top three sites"></div>
+
+      <div class="cmp-grid">
+        <article class="card">
+          <div class="card-head"><h3>Weights</h3><span class="muted" id="weights-note"></span></div>
+          <div class="weights" id="weights"></div>
+          <div class="card-head sub"><h3>Hard constraints</h3></div>
+          <ul class="constraints" id="constraints"></ul>
+        </article>
+        <article class="card reco" id="reco"></article>
+      </div>
+
+      <article class="card robust" id="robust"></article>
+
+      <article class="card table-card">
+        <div class="table-scroll"><table class="rank-table" id="rank-table"></table></div>
+      </article>
+    </div>
+  </section>
+
+  <!-- 3. Marswalk: кейс Езеро -->
+  <section class="view" id="view-mission" role="tabpanel" aria-labelledby="tab-mission">
+    <div class="stage mission-stage">
+      <div id="mission-map" aria-label="Map of Jezero crater"></div>
+      <div class="terrain3d" id="terrain3d" hidden>
+        <div class="t3d-bar">
+          <span class="eyebrow">3D terrain · HiRISE + HRSC elevation, CTX imagery</span>
+          <label class="t3d-ex">Vertical ×<input type="range" id="t3d-ex" min="1" max="6" step="0.5" value="3"><output id="t3d-ex-o">3</output></label>
+          <button type="button" class="icon-btn" id="t3d-close" aria-label="Close 3D view"><i data-lucide="x"></i></button>
+        </div>
+        <p class="t3d-hint"><i data-lucide="move-3d"></i>Drag to orbit, scroll to zoom</p>
+      </div>
+
+      <div class="layers-card sci-layers" role="group" aria-label="Scientific layers">
+        <div class="sl-head"><span class="eyebrow">Scientific layers</span><span class="mono sl-count" id="sl-count"></span>
+          <button type="button" class="sl-collapse" id="sl-collapse" aria-label="Collapse layers"><i data-lucide="chevron-up"></i></button></div>
+        <ol class="sl-list" id="sl-list"></ol>
+        <div class="slope-key"><span><i class="sw sw-2"></i>Steep, slow</span><span><i class="sw sw-3"></i>Too steep</span><span><i class="sw sw-hz"></i>Hazard hotspot</span></div>
+      </div>
+      <p class="map-hint"><i data-lucide="mouse-pointer-click"></i>Click the map to set a custom point B</p>
+      <p class="demo-flag" id="demo-flag" hidden><i data-lucide="flask-conical"></i>Demo terrain. Load a HiRISE DTM with tools/prepare_terrain.py</p>
+
+      <div class="visor" id="visor" hidden>
+        <div class="visor-top">
+          <span class="vt-arrow" id="vt-arrow"><i data-lucide="navigation"></i></span>
+          <div><b id="vt-text">Head north</b><span id="vt-dist">300 m</span></div>
+        </div>
+        <div class="visor-gauge left"><small>O₂</small><div class="vg-bar"><span id="vg-o2"></span></div><b id="vg-o2-t">100%</b></div>
+        <div class="visor-gauge right"><small>Return</small><div class="vg-bar"><span id="vg-ret"></span></div><b id="vg-ret-t">OK</b></div>
+        <div class="visor-bottom">
+          <span class="vchip"><i data-lucide="clock"></i><b id="vb-clock">09:00</b></span>
+          <span class="vchip"><i data-lucide="house"></i><b id="vb-home">0 m</b></span>
+          <span class="vchip"><i data-lucide="atom"></i><b id="vb-dose">0.00 mSv</b></span>
+          <span class="vchip"><i data-lucide="activity"></i><b id="vb-phase">Outbound</b></span>
+        </div>
+        <div class="visor-controls">
+          <button type="button" class="vbtn" id="nav-play" aria-label="Pause"><i data-lucide="pause"></i></button>
+          <button type="button" class="vbtn mono" id="nav-speed">300×</button>
+          <button type="button" class="vbtn" id="nav-leak" aria-pressed="false"><i data-lucide="triangle-alert"></i>Contingency: suit leak</button>
+          <button type="button" class="vbtn" id="nav-back"><i data-lucide="undo-2"></i>Turn back</button>
+          <button type="button" class="vbtn" id="nav-end"><i data-lucide="x"></i>End</button>
+        </div>
+      </div>
+    </div>
+
+    <aside class="panel mission-panel">
+      <div id="plan-panel" class="stack">
+        <div class="card ab">
+          <div class="ab-row">
+            <span class="ab-dot a">A</span>
+            <div class="ab-body"><small>Start</small><b>Habitat</b><span>Octavia E. Butler landing site</span></div>
+          </div>
+          <div class="ab-line" aria-hidden="true"></div>
+          <label class="ab-row" for="target-select">
+            <span class="ab-dot b">B</span>
+            <div class="ab-body"><small>Destination</small><select id="target-select"></select></div>
+          </label>
+          <div class="target-list" id="target-list" role="radiogroup" aria-label="Destinations"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h3>Route options</h3><span class="muted">A* on HiRISE/HRSC terrain</span></div>
+          <div class="route-ctl">
+            <label>Optimisation mode<select id="opt-mode">
+              <option value="all">Compare all four</option><option value="fast">Fastest</option><option value="safe">Safest</option><option value="short">Shortest</option><option value="sci">Science detour</option>
+            </select></label>
+            <label>Science search radius <output class="mono" id="o-radius">400 m</output><input type="range" id="s-radius" min="100" max="2000" step="50" value="400"></label>
+          </div>
+          <ol class="variants" id="variants"></ol>
+        </div>
+
+        <div class="card hazard-card" id="hazard-card"></div>
+        <div class="card sci-card" id="sci-card">
+          <div class="card-head"><h3>Scientific discovery</h3><span class="muted" id="sci-count"></span></div>
+          <div class="sci-filters">
+            <select id="sci-cat" aria-label="Category"><option value="">All categories</option></select>
+            <select id="sci-ev" aria-label="Evidence"><option value="">All evidence levels</option></select>
+          </div>
+          <label class="sci-near"><input type="checkbox" id="sci-near"> Only near point B (within the science search radius)</label>
+          <ul class="sci-list" id="sci-list"></ul>
+          <div class="sci-detail" id="sci-detail"></div>
+        </div>
+        <div class="card verdict" id="verdict" data-state="idle">
+          <div class="verdict-top"><span class="status" id="verdict-status">Planning</span><span class="muted" id="verdict-route"></span></div>
+          <p id="verdict-why"></p>
+          <div class="o2">
+            <div class="o2-head"><span>Suit oxygen needed</span><b class="mono" id="o2-text">0%</b></div>
+            <div class="o2-bar"><div class="o2-fill" id="o2-fill"></div><div class="o2-reserve" title="30% reserve"></div></div>
+          </div>
+          <button type="button" class="btn primary wide" id="start-nav"><i data-lucide="navigation"></i>Start navigation</button>
+          <div class="route-tools">
+            <button type="button" class="btn sm" id="btn-3d"><i data-lucide="mountain-snow"></i>3D terrain</button>
+            <button type="button" class="btn sm" id="btn-postcard"><i data-lucide="image"></i>Postcard</button>
+            <button type="button" class="btn sm" id="btn-share"><i data-lucide="link"></i>Share plan</button>
+            <button type="button" class="btn sm" id="btn-geojson"><i data-lucide="download"></i>GeoJSON</button>
+          </div>
+        </div>
+
+        <div class="stats" id="stats"></div>
+
+        <div class="card">
+          <div class="card-head"><h3>Sol timeline</h3><span class="muted">Local mean solar time</span></div>
+          <div class="timeline" id="timeline"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h3>Elevation profile</h3><button type="button" class="btn sm" id="btn-listen" title="Hear the route: pitch follows elevation"><i data-lucide="audio-lines"></i>Listen</button></div>
+          <div class="profile" id="profile"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h3>Science on this route</h3></div>
+          <ul class="sci" id="sci"></ul>
+        </div>
+
+        <details class="card settings">
+          <summary><h3>Mission parameters</h3><i data-lucide="chevron-down"></i></summary>
+          <label>Walk starts at <output class="mono" id="o-start">09:00</output>
+            <input type="range" id="s-start" min="6" max="16" step="0.5" value="9"></label>
+          <label>Steepest slope allowed <output class="mono" id="o-slope">15°</output>
+            <input type="range" id="s-slope" min="6" max="30" step="1" value="15"></label>
+          <label>Suit oxygen supply <output class="mono" id="o-suit">8 h</output>
+            <input type="range" id="s-suit" min="2" max="10" step="0.5" value="8"></label>
+          <label>Dust optical depth τ <output class="mono" id="o-dust">0.6</output>
+            <input type="range" id="s-dust" min="0.2" max="3" step="0.1" value="0.6"></label>
+          <p class="fine">τ is a sample value; the slider tests dust-storm contingencies.</p>
+          <label>Hazard: slope weight w₁ <output class="mono" id="o-w1">0.40</output>
+            <input type="range" id="s-w1" min="0" max="1" step="0.05" value="0.40"></label>
+          <label>Hazard: roughness weight w₂ <output class="mono" id="o-w2">0.25</output>
+            <input type="range" id="s-w2" min="0" max="1" step="0.05" value="0.25"></label>
+          <label>Hazard: obstacle (drop) weight w₃ <output class="mono" id="o-w3">0.15</output>
+            <input type="range" id="s-w3" min="0" max="1" step="0.05" value="0.15"></label>
+          <label>Hazard: uncertainty weight w₄ <output class="mono" id="o-w4">0.20</output>
+            <input type="range" id="s-w4" min="0" max="1" step="0.05" value="0.20"></label>
+          <label>High-risk slope threshold <output class="mono" id="o-thr">18°</output>
+            <input type="range" id="s-thr" min="8" max="30" step="1" value="18"></label>
+        </details>
+      </div>
+
+      <div id="nav-panel" class="stack" hidden>
+        <div class="nav-now">
+          <span class="nav-arrow" id="np-arrow"><i data-lucide="navigation"></i></span>
+          <div><small id="np-phase">Outbound</small><b id="np-text">Head north</b><span class="mono" id="np-dist">in 300 m</span></div>
+        </div>
+        <div class="nav-gauges">
+          <div class="ng"><small>Oxygen left</small><b class="mono" id="ng-o2">100%</b></div>
+          <div class="ng"><small>Return margin</small><b class="mono" id="ng-margin">–</b></div>
+          <div class="ng"><small>Time to habitat</small><b class="mono" id="ng-home">–</b></div>
+          <div class="ng"><small>Daylight left</small><b class="mono" id="ng-day">–</b></div>
+        </div>
+        <div class="return-check" id="return-check" data-state="ok">
+          <i data-lucide="shield-check"></i><p id="rc-text">Return to habitat is possible.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Turn by turn</h3></div>
+          <ol class="steps-list" id="steps-list"></ol>
+        </div>
+        <div class="card report" id="nav-summary" hidden></div>
+      </div>
+    </aside>
+  </section>
+
+  <!-- Концепция миссии -->
+  <section class="view view-page concept" id="view-concept" role="tabpanel" aria-labelledby="tab-concept">
+    <div class="page">
+      <header class="cx-hero">
+        <div class="cx-hero-text">
+          <span class="eyebrow">Mission concept</span>
+          <h1 class="display">Grass on Mars I</h1>
+          <p class="cx-lead">A crewed surface campaign at Jezero crater: four astronauts, about 500 sols (three-quarters of a Mars year) of science on foot, oxygen made from the air, and the first greenhouse on another planet. Every number below is either measured by a NASA mission or derived from NASA design studies, and the walks are planned on real terrain by the same engine as the Marswalk tab.</p>
+          <div class="cx-chips">
+            <span><i data-lucide="users"></i>4 crew</span><span><i data-lucide="calendar-range"></i>~500 sols on the surface</span>
+            <span><i data-lucide="map-pin"></i>Jezero crater, 18.44°N 77.45°E</span><span><i data-lucide="orbit"></i>Conjunction-class trajectory</span>
+          </div>
+        </div>
+        <div class="cx-hero-art cx-video-wrap" id="cx-hero-art">
+          <video id="cx-video" src="data/concept_video.mp4" poster="data/concept_poster.jpg" autoplay muted loop playsinline controls preload="auto"
+            aria-label="Grass on Mars I mission film"></video>
+          <button type="button" class="cx-unmute" id="cx-unmute"><i data-lucide="volume-2"></i>Sound on</button>
+        </div>
+      </header>
+
+      <section class="cx-sec">
+        <div class="cx-sec-head"><span class="cx-num">01</span><div><h2>Why this mission</h2><p>The question, the answer we propose, and why Jezero.</p></div></div>
+        <div class="cx-why">
+          <article class="card"><h3><i data-lucide="circle-help"></i>The question</h3><p>Was Mars ever alive, and can people live and work there safely? Rovers move a few hundred metres a day and choose samples slowly. Human geologists on foot can cover kilometres, read an outcrop in minutes and adapt the plan on the spot.</p></article>
+          <article class="card"><h3><i data-lucide="target"></i>Why Jezero</h3><p>An ancient lake with a river delta, where fine mud and carbonates can preserve signs of past life. Perseverance has mapped it in detail and left a sample depot. In our ranking Jezero is #1 for astrobiology and fully walkable on real terrain.</p></article>
+          <article class="card"><h3><i data-lucide="scale"></i>The honest trade-off</h3><p>Jezero has no shallow ice. Arcadia Planitia scores higher for a long-term base because ice lies about a metre down. Grass on Mars I chooses science first and plans water from hydrated minerals plus recycling; a later base can move north.</p></article>
+        </div>
+      </section>
+
+      <section class="cx-sec">
+        <div class="cx-sec-head"><span class="cx-num">02</span><div><h2>Mission pipeline</h2><p>Zyro walks you through the mission from the first site study to the return home.</p></div>
+          <div class="cx-pipe-ctrl"><button type="button" class="btn sm" id="pipe-prev" aria-label="Previous phase"><i data-lucide="chevron-left"></i></button>
+            <button type="button" class="btn sm primary" id="pipe-play"><i data-lucide="play"></i>Play</button>
+            <button type="button" class="btn sm" id="pipe-next" aria-label="Next phase"><i data-lucide="chevron-right"></i></button></div></div>
+        <div class="pipe" id="pipe">
+          <div class="pipe-track"><div class="pipe-fill" id="pipe-fill"></div></div>
+          <div class="pipe-nodes" id="pipe-nodes"></div>
+          <div class="pipe-zyro" id="pipe-zyro"><img alt="Zyro" data-zyro-face><span class="pipe-say" id="pipe-say"></span></div>
+        </div>
+        <article class="card pipe-detail" id="pipe-detail" aria-live="polite"></article>
+        <div class="card gantt-card"><h3><i data-lucide="calendar-range"></i>Timeline</h3><div id="gantt"></div>
+          <p class="muted">Launch windows to Mars open every ~26 months (the synodic period). Cargo flies one window before the crew, so the habitat, power and oxygen plant are working before anyone launches.</p></div>
+      </section>
+
+      <section class="cx-sec">
+        <div class="cx-sec-head"><span class="cx-num">03</span><div><h2>Science objectives</h2><p>Mapped to the four goals of NASA’s Mars Exploration Program Analysis Group (MEPAG).</p></div></div>
+        <div class="card table-wrap"><div class="table-scroll"><table class="obj-table" id="obj-table"></table></div></div>
+      </section>
+
+      <section class="cx-sec">
+        <div class="cx-sec-head"><span class="cx-num">04</span><div><h2>Systems</h2><p>What the crew brings. Pictures are renders of real NASA hardware and prototypes from NASA’s official 3D model library.</p></div></div>
+        <div class="sys-grid" id="sys-grid"></div>
+      </section>
+
+      <section class="cx-sec">
+        <div class="cx-sec-head"><span class="cx-num">05</span><div><h2>Budgets</h2><p>The numbers that decide whether the mission closes.</p></div></div>
+        <div class="budget-grid">
+          <article class="card"><h3><i data-lucide="radiation"></i>Radiation dose</h3><div class="kpi-big" id="big-rad"></div><div id="chart-rad"></div><p class="muted" id="rad-note"></p></article>
+          <article class="card"><h3><i data-lucide="wind"></i>Oxygen</h3><div class="kpi-big" id="big-o2"></div><div id="chart-o2"></div><p class="muted" id="o2-note"></p></article>
+          <article class="card"><h3><i data-lucide="sun"></i>Power</h3><div class="kpi-big" id="big-power"></div><div id="chart-power"></div><p class="muted" id="power-note"></p></article>
+        </div>
+      </section>
+
+      <section class="cx-sec">
+        <div class="cx-sec-head"><span class="cx-num">06</span><div><h2>Marswalk campaign</h2><p>Computed live on HiRISE and HRSC terrain with the mission rules: 8 h suits, 30% oxygen reserve, back before 17:30 local time.</p></div></div>
+        <div class="card traverse-card"><div class="table-scroll"><table class="traverse" id="traverse"></table></div><p class="muted" id="traverse-note"></p></div>
+      </section>
+
+      <section class="cx-sec">
+        <div class="cx-sec-head"><span class="cx-num">07</span><div><h2>Risks</h2><p>What could go wrong and what the mission design does about it.</p></div></div>
+        <div class="card risk-card"><div class="table-scroll"><table class="risk">
+          <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation in the design</th></tr></thead>
+          <tbody>
+            <tr><td>Radiation above the career limit</td><td><span class="lv l3">Certain without shielding</span></td><td><span class="lv l3">High</span></td><td>Water and polyethylene walls in the transit habitat, storm shelter, regolith over the surface habitat, short transit</td></tr>
+            <tr><td>Suit leak on a walk</td><td><span class="lv l1">Low</span></td><td><span class="lv l3">Critical</span></td><td>Two-person walks, live return margin, leak drill and nearest-way-home routing in Marswalk</td></tr>
+            <tr><td>Fall on steep ground</td><td><span class="lv l2">Medium</span></td><td><span class="lv l3">High</span></td><td>Slope map from real elevation, safest-route option, slope limit</td></tr>
+            <tr><td>Global dust storm</td><td><span class="lv l2">Medium</span></td><td><span class="lv l3">High</span></td><td>Fission power independent of sunlight, dust optical depth rule cancels walks</td></tr>
+            <tr><td>Oxygen plant underperforms</td><td><span class="lv l2">Medium</span></td><td><span class="lv l3">High</span></td><td>Plant runs a full launch window before the crew departs; crew launches only if propellant tanks are full</td></tr>
+            <tr><td>No shallow water at Jezero</td><td><span class="lv l3">Known</span></td><td><span class="lv l2">Moderate</span></td><td>Water recycling at ISS level (98%) plus extraction from hydrated minerals; delivered reserve</td></tr>
+          </tbody></table></div></div>
+      </section>
+
+      <section class="cx-sec">
+        <div class="cx-sec-head"><span class="cx-num">08</span><div><h2>Expected results and their value</h2><p>What the mission returns, how we know it succeeded, and why it matters.</p></div></div>
+        <div class="card table-wrap"><div class="table-scroll"><table class="res-table" id="res-table"></table></div></div>
+        <div class="success card">
+          <div><span class="eyebrow">Minimum success</span><ul><li>10 Marswalks to 4 targets with every crew member back safely</li><li>20 documented samples from the delta and crater floor</li><li>Oxygen plant at half its design rate</li><li>First seeds germinate in the greenhouse</li></ul></div>
+          <div><span class="eyebrow">Full success</span><ul><li>40+ Marswalks covering every walkable target</li><li>60+ samples with field context returned to Earth</li><li>Ascent oxygen made on Mars</li><li>A full harvest from Martian water</li></ul></div>
+        </div>
+        <p class="muted cx-src">Sources: NASA Mars Design Reference Architecture 5.0 (2009); MEPAG Goals Document; Zeitlin et al. 2013 and Hassler et al. 2014 (Curiosity RAD); NASA-STD-3001 (radiation career limit); NASA MOXIE results; NASA Fission Surface Power project; ISS Veggie and life-support results. Success targets are the team’s design goals.</p>
+      </section>
+    </div>
+  </section>
+
+  <!-- Окружающая среда: что измерили приборы -->
+  <section class="view view-page" id="view-env" role="tabpanel" aria-labelledby="tab-env">
+    <div class="page">
+      <div class="page-head">
+        <div>
+          <span class="eyebrow">Environmental intelligence</span>
+          <h1>What the instruments measured</h1>
+          <p>Archived measurements, not current weather and not a forecast. A rover’s weather station describes the spot where the rover stood on that sol, not the whole crater.</p>
+        </div>
+      </div>
+
+      <h2 class="sec-title">Measured on the surface</h2>
+      <div class="env-grid" id="env-stations"></div>
+
+      <h2 class="sec-title">MEDA time series</h2>
+      <div class="card env-load">
+        <div><b>Load MEDA bins from the PDS archive</b>
+          <p class="muted">Charts draw from a CSV you export from the Mars 2020 MEDA archive (PDS Atmospheres Node), for example 15-minute means. Columns: <code>sol, lmst_hour, temp_c, pressure_pa, wind_ms, wind_dir_deg</code>. Nothing is drawn until real data is loaded, so no chart here is invented.</p></div>
+        <label class="btn"><i data-lucide="upload"></i>Load CSV<input type="file" id="meda-file" accept=".csv,text/csv" hidden></label>
+      </div>
+      <div class="env-charts" id="env-charts"></div>
+
+      <div class="env-two">
+        <article class="card env-thermal">
+          <div class="card-head"><h3>Thermal map · THEMIS</h3>
+            <div class="seg" role="group" aria-label="Day or night"><button type="button" data-th="day" aria-pressed="true">Day</button><button type="button" data-th="night" aria-pressed="false">Night</button></div></div>
+          <div class="env-map" id="env-map"></div>
+          <p class="muted">Mars Odyssey THEMIS infrared mosaics, 100 m per pixel, from NASA Mars Trek. Brightness shows which ground is relatively warmer or cooler; the mosaic is not calibrated, so no temperature can be read from it. Needs the internet.</p>
+        </article>
+        <article class="card env-kinds">
+          <h3>Kinds of data</h3>
+          <dl>
+            <div><dt><span class="kd kd-hist"></span>Historical observation</dt><dd>An archived instrument record at a stated place and time. In Marswalk: published MEDA, REMS and Viking readings.</dd></div>
+            <div><dt><span class="kd kd-proc"></span>Processed observation</dt><dd>Computed from observations without a physical model. In Marswalk: slope and roughness from the elevation grid, THEMIS mosaics, MEDA bin means.</dd></div>
+            <div><dt><span class="kd kd-model"></span>Model estimate</dt><dd>Computed from a formula, not measured. In Marswalk: air pressure from elevation, walking speed, radiation dose per walk.</dd></div>
+            <div><dt><span class="kd kd-sim"></span>Simulation or assumption</dt><dd>A scenario value or stated assumption. In Marswalk: the dust slider, suit factor 0.6 and the go / no-go walk check.</dd></div>
+          </dl>
+        </article>
+      </div>
+
+      <h2 class="sec-title">Data availability</h2>
+      <div class="card table-wrap"><div class="table-scroll"><table class="data-table" id="env-avail"></table></div></div>
+    </div>
+  </section>
+
+  <!-- 4. Метод и данные -->
+  <section class="view view-page" id="view-method" role="tabpanel" aria-labelledby="tab-method">
+    <div class="page">
+      <div class="page-head m-head">
+        <div>
+          <span class="eyebrow">Method and data</span>
+          <h1>How Marswalk decides</h1>
+          <p>Every number in Marswalk comes from a NASA dataset and a formula you can check here. Switch to simple words any time.</p>
+        </div>
+        <button type="button" class="btn primary simple-toggle" id="simple-toggle" aria-pressed="false"><i data-lucide="sparkles"></i>Explain simply</button>
+      </div>
+
+      <nav class="m-toc" aria-label="On this page">
+        <a href="#m-steps" data-to="m-steps"><i data-lucide="route"></i>How it works</a>
+        <a href="#m-data" data-to="m-data"><i data-lucide="database"></i>NASA data</a>
+        <a href="#m-calc" data-to="m-calc"><i data-lucide="calculator"></i>Calculations</a>
+        <a href="#m-tests" data-to="m-tests"><i data-lucide="badge-check"></i>Tests</a>
+        <a href="#m-open" data-to="m-open"><i data-lucide="download"></i>Open data</a>
+        <a href="#m-limits" data-to="m-limits"><i data-lucide="triangle-alert"></i>Limits</a>
+      </nav>
+
+      <section class="m-sec" id="m-steps">
+        <div class="m-flow">
+          <article class="mf mf-1"><span class="mf-n mono">1</span><span class="mf-ico"><i data-lucide="satellite"></i></span><h3>Collect NASA data</h3>
+            <p class="expert">12 NASA sources with data from 5 missions (MGS, MRO, Mars Express, Curiosity, Perseverance): MOLA elevation, HiRISE and CTX images, CRISM minerals, SHARAD radar, MEDA weather, RAD radiation, MOXIE, plus Mars24 time and the Mars Fact Sheet.</p>
+            <p class="simple-note"><i data-lucide="sparkles"></i><span>Spacecraft around Mars and rovers on the ground measure the height of the land, where ice hides, how strong sunlight is and how much radiation there is.</span></p></article>
+          <span class="mf-arrow"><i data-lucide="arrow-right"></i></span>
+          <article class="mf mf-2"><span class="mf-n mono">2</span><span class="mf-ico"><i data-lucide="calculator"></i></span><h3>Calculate</h3>
+            <p class="expert">8 formulas: barometric pressure, Earth-equivalent altitude, sunlight by distance and latitude, Tobler walking speed, oxygen reserve, radiation dose, weighted index, Mars24 clock.</p>
+            <p class="simple-note"><i data-lucide="sparkles"></i><span>We turn the measurements into simple numbers: how thick the air is, how fast you can walk, how much air the suit has left.</span></p></article>
+          <span class="mf-arrow"><i data-lucide="arrow-right"></i></span>
+          <article class="mf mf-3"><span class="mf-n mono">3</span><span class="mf-ico"><i data-lucide="circle-check-big"></i></span><h3>Decide and check</h3>
+            <p class="expert">Rank sites with explicit weights and NASA exploration limits; plan routes with A* on real slopes; GO only if oxygen, daylight and dust rules pass.</p>
+            <p class="simple-note"><i data-lucide="sparkles"></i><span>We add everything up to pick the best place, then test every walk so the crew always has enough air to come home before dark.</span></p></article>
+        </div>
+        <div class="method-grid three why-cards">
+          <article class="card"><span class="num-badge">Problem</span><h3>Choices with no rescue nearby</h3>
+            <p>The first crews on Mars will choose where to work and how to move on foot with no rescue nearby. Today the data for these choices sits in separate mission archives.</p></article>
+          <article class="card"><span class="num-badge">Answer</span><h3>One layered decision tool</h3>
+            <p>A site ranking with explicit weights and constraints, a walking route checked against slopes, oxygen, daylight and dust, and turn-by-turn guidance that keeps checking the way home.</p></article>
+          <article class="card"><span class="num-badge">Challenge fit</span><h3>Interplanetary Survival Guide</h3>
+            <p>A layered, integrated view of a location and a route that combines data from multiple NASA missions and helps an explorer plan a successful Marswalk while doing science.</p></article>
+        </div>
+        <a class="card concept-link" href="#concept" data-goto="concept"><i data-lucide="rocket"></i><div><b>Mission concept · Grass on Mars I</b><small>The full mission plan, budgets, science objectives and expected results have their own tab.</small></div><i data-lucide="arrow-right"></i></a>
+      </section>
+
+      <section class="m-sec" id="m-data">
+        <div class="m-sec-head"><h2 class="sec-title">NASA data we use</h2><p class="muted">Each row links to the archive where the data lives.</p></div>
+        <p class="simple-note block"><i data-lucide="sparkles"></i><span>These are the “eyes” we borrow from NASA: cameras, a laser, a radar and weather sensors on spacecraft and rovers.</span></p>
+        <div class="card table-wrap"><div class="table-scroll"><table class="data-table" id="data-table"></table></div></div>
+      </section>
+
+      <section class="m-sec" id="m-calc">
+        <div class="m-sec-head"><h2 class="sec-title">Calculations, step by step</h2>
+          <label class="calc-site-pick">Site for the examples<select id="calc-site-select"></select></label></div>
+        <p class="simple-note block"><i data-lucide="sparkles"></i><span>Each card shows a formula, the NASA numbers that go into it and the answer. Move the sliders, or press “Explain simply” and Zyro will say it in plain words.</span></p>
+        <div class="calc-grid" id="calc-grid"></div>
+      </section>
+
+      <section class="m-sec" id="m-tests">
+        <h2 class="sec-title">Scientific method and tests</h2>
+        <ol class="sci-method">
+          <li><b>Question</b><span>Where can a crew live and work safely, and can they walk to the best science and back?</span></li>
+          <li><b>Hypothesis</b><span>Sites with shallow ice, good sunlight and thicker air rank highest for a base; ancient lake sites like Jezero win when science matters most.</span></li>
+          <li><b>Data</b><span>MOLA elevation, SHARAD and HiRISE ice evidence, CRISM minerals, HiRISE/HRSC terrain, MEDA, REMS and Viking weather, RAD radiation.</span></li>
+          <li><b>Models</b><span>Weighted index, barometric pressure, Tobler walking speed slowed for a suit, A* routing on real slopes.</span></li>
+          <li><b>Tests</b><span>Pressure model checked against MEDA; ranking stress-tested with 1,000 random trials; every route checked for oxygen and daylight.</span></li>
+          <li><b>Result</b><span>Arcadia leads for a greenhouse base; Jezero leads for astrobiology and is walkable from the landing site on real terrain.</span></li>
+        </ol>
+        <div class="method-grid">
+          <article class="card validate"><h3><i data-lucide="badge-check"></i>Model check against a real measurement</h3>
+            <div class="val-row"><div><small>Model at Jezero (−2.6 km)</small><b class="mono">771 Pa</b></div><div><small>Perseverance MEDA, spring 2021</small><b class="mono">718 Pa</b></div><div><small>Difference</small><b class="mono">+7%</b></div></div>
+            <p>Inside the natural seasonal swing: surface pressure on Mars rises and falls by roughly a quarter to a third over a year as CO₂ freezes onto and returns from the polar caps.</p>
+            <p class="simple-note"><i data-lucide="sparkles"></i><span>We compared our formula with a real reading from the Perseverance rover. They differ by only 7%, less than the air on Mars changes between seasons.</span></p></article>
+          <article class="card"><h3><i data-lucide="flask-conical"></i>Ranking stress test</h3>
+            <p>1,000 random trials change every weight by up to ±50% and add measurement uncertainty. The leader stays #1 in most trials; the full result is on the Compare tab.</p>
+            <p class="simple-note"><i data-lucide="sparkles"></i><span>We shake the numbers a thousand times to see if the winner changes. If it keeps winning, we trust the result more.</span></p>
+            <a class="link-btn" href="#compare" data-goto="compare">Open the robustness test <i data-lucide="arrow-right"></i></a></article>
+        </div>
+      </section>
+
+      <h2 class="sec-title" id="m-open">Open data</h2>
+      <div class="open-data card">
+        <p>Everything the app computes can be downloaded and checked. CSV opens in Excel; GeoJSON opens in QGIS and other GIS tools.</p>
+        <div class="od-btns">
+          <button type="button" class="btn" id="dl-sites-csv"><i data-lucide="table"></i>Site scores (CSV)</button>
+          <button type="button" class="btn" id="dl-sites-json"><i data-lucide="braces"></i>Sites with sources (JSON)</button>
+          <button type="button" class="btn" id="dl-route"><i data-lucide="route"></i>Current route (GeoJSON)</button>
+        </div>
+        <ul class="prov">
+          <li><i data-lucide="mountain"></i><span><b>Elevation</b> MGS MOLA</span><a href="https://pds-geosciences.wustl.edu/" target="_blank" rel="noopener">PDS Geosciences</a></li>
+          <li><i data-lucide="scan"></i><span><b>Jezero imagery and terrain</b> HiRISE, CTX, HRSC</span><a href="https://astrogeology.usgs.gov/search/map/mars_2020_terrain_relative_navigation_hirise_dtm_mosaic" target="_blank" rel="noopener">USGS Astrogeology</a></li>
+          <li><i data-lucide="image"></i><span><b>Photos</b> 20+ images</span><a href="https://science.nasa.gov/photojournal/" target="_blank" rel="noopener">NASA Photojournal</a></li>
+          <li><i data-lucide="map"></i><span><b>Global maps</b> Viking, MOLA, CRISM layers</span><a href="https://trek.nasa.gov/mars/" target="_blank" rel="noopener">NASA Mars Trek</a></li>
+          <li><i data-lucide="cloud-sun"></i><span><b>Weather</b> Perseverance MEDA</span><a href="https://pds-atmospheres.nmsu.edu/" target="_blank" rel="noopener">PDS Atmospheres</a></li>
+          <li><i data-lucide="sparkles"></i><span><b>Star sky</b> Yale Bright Star Catalog</span><a href="https://heasarc.gsfc.nasa.gov/" target="_blank" rel="noopener">NASA HEASARC</a></li>
+        </ul>
+      </div>
+
+      <h2 class="sec-title">Why it matters on Earth and in Tajikistan</h2>
+      <div class="impact-grid">
+        <article class="card"><h3><i data-lucide="earth"></i>On Earth</h3>
+          <p>The same engine plans safe walks on Earth: swap the Mars elevation for NASA’s free global elevation data, and slope, daylight and supply checks help mountain rescue teams, geology field trips and trekkers.</p></article>
+        <article class="card"><h3><i data-lucide="mountain-snow"></i>The Pamirs, our Mars analog</h3>
+          <p>A high, cold, dry plateau around 4,000 m. The air there is about 62 kPa, Dushanbe (≈800 m) about 92 kPa, Jezero about 0.77 kPa: over 100 times thinner than in Dushanbe.</p></article>
+        <article class="card"><h3><i data-lucide="snowflake"></i>Ice we depend on</h3>
+          <p>Tajikistan’s glaciers, including the Fedchenko Glacier (about 77 km long), feed the Vakhsh and Panj, which form the Amu Darya. The orbital imaging and radar ideas used to find ice on Mars also help track glaciers from space.</p></article>
+        <article class="card"><h3><i data-lucide="school"></i>For our schools</h3>
+          <p>A single offline file that runs on slow internet, a friendly guide who explains every number, and open data a class can check. Built in Dushanbe for students anywhere.</p></article>
+      </div>
+
+      <h2 class="sec-title" id="m-limits">Limits of this prototype</h2>
+      <ul class="limits">
+        <li><b>Jezero terrain is real but coarse for walking.</b> HiRISE and HRSC elevation resampled to a ~51 m grid; boulders and small scarps below that size are not seen by the router.</li>
+        <li><b>Water, terrain and science ratings are team assessments</b> based on the cited missions, not NASA products. Each one lists its source.</li>
+        <li><b>Weather values are samples</b> until Perseverance MEDA data is loaded.</li>
+        <li><b>Target positions in Jezero are approximate</b>, placed on HiRISE/CTX imagery; check them against CRISM maps in Mars Trek.</li>
+        <li><b>Map tiles for Jezero</b> come from the open Jez Explore project (NASA/JPL/UArizona, MSSS, USGS data). The repository has no license file, so reuse should be confirmed with its author.</li>
+        <li><b>Globe texture</b> is a 4K color map and relief normal map from the Celestia project, built from USGS Viking and Mars Global Surveyor data. Photos come from NASA Photojournal; previews load when the site is hosted online.</li>
+      </ul>
+
+      <div class="team card">
+        <img data-zyro-face alt="" class="team-face">
+        <div><h3>Team Grass on Mars</h3>
+          <p>Three people from Dushanbe, Tajikistan. NASA Space Apps 2026, challenge “Interplanetary Survival Guide: Martian Map”. Our name is the long-term goal: a Mars where even grass can grow.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Zyro -->
+  <aside class="zyro" id="zyro" hidden aria-label="Chat with Zyro">
+    <header>
+      <img data-zyro-face alt="" class="zf">
+      <div><b>Zyro</b><small id="zyro-mode">Mission assistant</small></div>
+      <select id="zyro-voice-name" class="voice-select" hidden aria-label="Zyro’s voice"></select>
+      <button type="button" class="icon-btn sm" id="zyro-quiet" aria-pressed="false" aria-label="Pop-up tips" title="Pop-up tips"><i data-lucide="message-square-more"></i></button>
+      <button type="button" class="icon-btn sm" id="zyro-voice" hidden aria-pressed="false" aria-label="Read answers aloud"><i data-lucide="volume-2"></i></button>
+      <button type="button" class="icon-btn sm" id="zyro-close" aria-label="Close"><i data-lucide="x"></i></button>
+    </header>
+    <ul class="zyro-log" id="zyro-log"></ul>
+    <div class="zyro-chips" id="zyro-chips">
+      <button type="button" data-q="Why is the top site ranked first?">Why this ranking?</button>
+      <button type="button" data-q="Which route should I take and why?">Best route?</button>
+      <button type="button" data-q="Will my oxygen last?">Oxygen check</button>
+      <button type="button" data-q="Where on Earth is the weather like this site?">Earth weather twin</button>
+      <button type="button" data-q="Give me a survival note for this walk">Survival note</button>
+    </div>
+    <form class="zyro-form" id="zyro-form">
+      <input id="zyro-input" type="text" placeholder="Ask about sites, routes or safety" autocomplete="off" maxlength="300">
+      <button type="submit" class="icon-btn sm accent" aria-label="Send"><i data-lucide="arrow-up"></i></button>
+    </form>
+  </aside>
+
+  <dialog class="lightbox" id="lightbox" aria-label="Photo">
+    <div class="lb-media" id="lb-media"></div>
+    <div class="lb-info">
+      <span class="eyebrow" id="lb-pia"></span>
+      <h3 id="lb-title"></h3>
+      <p id="lb-note"></p>
+      <p class="muted" id="lb-by"></p>
+      <div class="lb-actions">
+        <a class="btn primary" id="lb-link" target="_blank" rel="noopener">Open on NASA Photojournal <i data-lucide="arrow-up-right"></i></a>
+        <button type="button" class="btn" id="lb-close">Close</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="sheet" id="exp-modal" aria-labelledby="exp-title">
+    <div class="sheet-head">
+      <div><span class="eyebrow" id="exp-eyebrow">Expedition record</span><h2 class="display" id="exp-title"></h2></div>
+      <button type="button" class="icon-btn" id="exp-close" aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
+    <div class="sheet-body" id="exp-body"></div>
+  </dialog>
+
+  <dialog class="sheet" id="pc-modal" aria-labelledby="pc-title">
+    <div class="sheet-head">
+      <div><span class="eyebrow">Postcard from Mars</span><h2 class="display" id="pc-title">Your Marswalk</h2></div>
+      <button type="button" class="icon-btn" id="pc-close" aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
+    <div class="sheet-body">
+      <label class="pc-name">Signed by<input type="text" id="pc-name" maxlength="40" placeholder="Your name and city" value="Team Grass on Mars, Dushanbe"></label>
+      <canvas id="pc-canvas" width="1200" height="750" aria-label="Postcard image"></canvas>
+      <div class="exp-actions">
+        <button type="button" class="btn primary" id="pc-save"><i data-lucide="download"></i>Save PNG</button>
+        <button type="button" class="btn" id="pc-share"><i data-lucide="link"></i>Copy plan link</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Zyro на экране: всплывающие реплики и экскурсия -->
+  <div class="buddy" id="buddy" hidden>
+    <button type="button" class="buddy-face" id="buddy-face" aria-label="Open chat with Zyro"><img alt="" id="buddy-img"><span class="buddy-ring"></span></button>
+    <div class="buddy-bubble" role="status" aria-live="polite">
+      <div class="buddy-top"><span class="buddy-tag" id="buddy-tag">Zyro</span>
+        <button type="button" class="buddy-x buddy-voice" id="buddy-voice" aria-label="Read aloud" title="Read aloud"><i data-lucide="volume-2"></i></button>
+        <button type="button" class="buddy-x" id="buddy-x" aria-label="Hide"><i data-lucide="x"></i></button></div>
+      <p id="buddy-text"></p>
+      <div class="buddy-actions" id="buddy-actions"></div>
+    </div>
+  </div>
+  <div class="spot" id="spot" hidden></div>
+
+  <!-- Меню разделов -->
+  <div class="menu" id="menu" role="dialog" aria-modal="true" aria-label="Sections" hidden>
+    <div class="menu-inner">
+      <div class="menu-head">
+        <div><span class="eyebrow">Marswalk · Grass on Mars</span><h2 class="display">Where to?</h2></div>
+        <button type="button" class="icon-btn" id="menu-close" aria-label="Close menu"><i data-lucide="x"></i></button>
+      </div>
+      <div class="menu-grid" id="menu-grid"></div>
+      <button type="button" class="menu-home" id="menu-home"><img alt="" data-zyro-face><span><b>Back to the start screen</b><small>See the intro again and choose how to begin</small></span><i data-lucide="house"></i></button>
+    </div>
+  </div>
+
+  <!-- Близнец на Земле: фото и сведения -->
+  <dialog class="sheet twin-sheet" id="twin-modal" aria-labelledby="tw-title">
+    <div class="sheet-head">
+      <div><span class="eyebrow" id="tw-eyebrow">Weather twin on Earth</span><h2 class="display" id="tw-title"></h2><span class="tw-country" id="tw-country"></span></div>
+      <div class="tw-head-right"><span class="tw-flag" id="tw-flag"></span><button type="button" class="icon-btn" id="tw-close" aria-label="Close"><i data-lucide="x"></i></button></div>
+    </div>
+    <div class="sheet-body tw-body">
+      <div class="tw-photos" id="tw-photos"></div>
+      <aside class="tw-side">
+        <div class="tw-map" id="tw-map"></div>
+        <div id="tw-facts"></div>
+      </aside>
+    </div>
+  </dialog>
+
+  <!-- Справка по вкладке от Zyro: при первом открытии и по кнопке «?» -->
+  <dialog class="help-modal" id="help-modal" aria-labelledby="help-title">
+    <div class="help-art"><img alt="Zyro" data-zyro-body-help><span class="help-badge" id="help-badge"></span></div>
+    <div class="help-body">
+      <span class="eyebrow" id="help-eyebrow">Zyro explains</span>
+      <h2 class="display" id="help-title"></h2>
+      <p class="help-lead" id="help-lead"></p>
+      <ul class="help-list" id="help-list"></ul>
+      <p class="help-why" id="help-why"></p>
+      <div class="help-actions">
+        <button type="button" class="btn primary" id="help-ok">Got it</button>
+        <button type="button" class="btn" id="help-tour" hidden><i data-lucide="play"></i>Take the 1-minute tour</button>
+        <button type="button" class="icon-btn help-voice" id="help-voice" aria-label="Read aloud" title="Read aloud"><i data-lucide="volume-2"></i></button>
+      </div>
+    </div>
+  </dialog>
+  <button type="button" class="help-fab" id="help-fab" aria-label="What is on this tab?" title="What is on this tab?"><i data-lucide="circle-help"></i></button>
+
+  <!-- Эквалайзер, пока Zyro говорит -->
+  <div class="eq" id="eq" hidden aria-live="off">
+    <img alt="" data-zyro-face>
+    <div class="eq-bars" id="eq-bars" aria-hidden="true"></div>
+    <div class="eq-mid"><span class="eq-text" id="eq-text">Zyro is speaking</span><span class="eq-prog"><i id="eq-prog"></i></span></div>
+    <button type="button" class="eq-btn" id="eq-pause" aria-label="Pause"><i data-lucide="pause"></i></button>
+    <button type="button" class="eq-btn" id="eq-stop" aria-label="Stop speaking"><i data-lucide="square"></i></button>
+    <button type="button" class="eq-btn" id="eq-mute" aria-label="Mute Zyro"><i data-lucide="volume-x"></i></button>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/assets.js"></script>
+<script src="js/sites.js"></script>
+<script src="js/content.js"></script>
+<script src="js/intro_photo.js"></script>
+<script src="js/earth_assets.js"></script>
+<script src="js/stars.js"></script>
+<script src="js/jezero_data.js"></script>
+<script src="js/marsclock.js"></script>
+<script src="js/router.js"></script>
+<script src="js/globe.js"></script>
+<script src="js/nav.js"></script>
+<script src="js/mission.js"></script>
+<script src="js/scilayers.js"></script>
+<script src="js/zyro.js"></script>
+<script src="js/buddy.js"></script>
+<script src="js/terrain3d.js"></script>
+<script src="js/extras.js"></script>
+<script src="js/system_images.js"></script>
+<script src="js/concept.js"></script>
+<script src="js/method.js"></script>
+<script src="js/environment.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
